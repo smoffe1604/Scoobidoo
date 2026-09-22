@@ -213,6 +213,23 @@ a.icon-button:hover {
   color: #f7f5f0;
 }
 
+a.icon-button.corner {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+  width: 64px;
+  height: 64px;
+  box-shadow: 0 1px 4px rgba(31, 28, 22, 0.16);
+}
+
+a.icon-button.corner svg {
+  width: 28px;
+  height: 28px;
+}
+
+header.top { padding-right: 76px; }
+
 header h1 {
   margin: 0;
   font-family: Georgia, "Palatino Linotype", serif;

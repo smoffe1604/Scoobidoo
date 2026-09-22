@@ -160,7 +160,7 @@ export default function App() {
           )}
           {!onData && (
             <a
-              className="icon-button"
+              className="icon-button corner"
               href="/kildedata"
               aria-label="Kildedata"
               onClick={(event) => follow(event, "/kildedata")}
