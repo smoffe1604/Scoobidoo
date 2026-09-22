@@ -147,14 +147,14 @@ export default function RegionMap({
   return (
     <div className="map-block">
       <div ref={containerRef} className="region-map" />
-      <p className="map-caption">
-        <span className="swatch low" /> lav
-        <span className="swatch mid" />
-        <span className="swatch high" /> høj
-        <span>
-          Farven er skadeprocenten for {portfolioId || "alle porteføljer"}. Klik på en region for at filtrere.
+      <div className="map-legend" aria-label="Skadeprocent fra 55 procent til 85 procent">
+        <span className="map-legend-title">Skadeprocent</span>
+        <span className="map-legend-scale">
+          <span>55 %</span>
+          <span className="map-legend-bar" />
+          <span>85 %</span>
         </span>
-      </p>
+      </div>
     </div>
   );
 
