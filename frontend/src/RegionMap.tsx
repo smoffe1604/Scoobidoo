@@ -61,22 +61,24 @@ export default function RegionMap({
 
     map.on("load", () => {
       void Promise.all([
-        fetch("/countries.geojson").then((response) => response.json()),
+        fetch("/countries.geojson").then((response) => (response.ok ? response.json() : null)),
         fetch("/regions.geojson").then((response) => response.json()),
-      ]).then(([countries, data]: [GeoJSON.FeatureCollection, GeoJSON.FeatureCollection]) => {
-          map.addSource("countries", { type: "geojson", data: countries });
-          map.addLayer({
-            id: "countries-fill",
-            type: "fill",
-            source: "countries",
-            paint: { "fill-color": "#e7e2d6" },
-          });
-          map.addLayer({
-            id: "countries-line",
-            type: "line",
-            source: "countries",
-            paint: { "line-color": "#8b90a8", "line-width": 1.25 },
-          });
+      ]).then(([countries, data]: [GeoJSON.FeatureCollection | null, GeoJSON.FeatureCollection]) => {
+          if (countries) {
+            map.addSource("countries", { type: "geojson", data: countries });
+            map.addLayer({
+              id: "countries-fill",
+              type: "fill",
+              source: "countries",
+              paint: { "fill-color": "#e7e2d6" },
+            });
+            map.addLayer({
+              id: "countries-line",
+              type: "line",
+              source: "countries",
+              paint: { "line-color": "#8b90a8", "line-width": 1.25 },
+            });
+          }
           map.addSource("regions", { type: "geojson", data, promoteId: "region" });
           map.addLayer({
             id: "regions-land",

@@ -199,14 +199,20 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         def index() -> FileResponse:
             return FileResponse(dist / "index.html")
 
-        regions = dist / "regions.geojson"
-        if regions.is_file():
-
-            @app.get("/regions.geojson")
-            def region_outlines() -> FileResponse:
-                return FileResponse(regions, media_type="application/geo+json")
+        for name in ("regions.geojson", "countries.geojson"):
+            outline = dist / name
+            if outline.is_file():
+                _mount_outline(app, name, outline)
 
     return app
+
+
+def _mount_outline(app: FastAPI, name: str, outline: Path) -> None:
+    def outlines() -> FileResponse:
+        return FileResponse(outline, media_type="application/geo+json")
+
+    outlines.__name__ = f"outline_{name.replace('.', '_')}"
+    app.get(f"/{name}")(outlines)
 
 
 def _filters(
