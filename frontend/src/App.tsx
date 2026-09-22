@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import DataBrowser from "./DataBrowser";
+import { danishLabel } from "./labels";
+import RegionMap from "./RegionMap";
 
 type Filters = {
   portfolioId: string;
@@ -97,14 +99,14 @@ export default function App() {
   return (
     <main className="page">
       <header>
-        <h1>Loss experience</h1>
-        <p>Danish property book. Figures in DKK. Full annual premium, no pro-rata.</p>
+        <h1>Skadesforløb</h1>
+        <p>Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med.</p>
         <nav className="nav">
           <button type="button" className={view === "experience" ? "on" : undefined} onClick={() => setView("experience")}>
-            Loss experience
+            Skadesforløb
           </button>
           <button type="button" className={view === "data" ? "on" : undefined} onClick={() => setView("data")}>
-            Source tables
+            Kildedata
           </button>
         </nav>
       </header>
@@ -116,39 +118,46 @@ export default function App() {
       {error && <p className="error">{error}</p>}
 
       <section className="panel">
+        <RegionMap
+          portfolioId={filters.portfolioId}
+          year={filters.year}
+          assetType={filters.assetType}
+          region={filters.region}
+          onSelectRegion={(region) => setFilters({ ...filters, region })}
+        />
         <div className="filters">
           <Select
-            label="Portfolio"
+            label="Portefølje"
             value={filters.portfolioId}
             onChange={(portfolioId) => setFilters({ ...filters, portfolioId })}
-            options={[["", "All portfolios"], ...(meta?.portfolios ?? []).map((id) => [id, id] as [string, string])]}
+            options={[["", "Alle porteføljer"], ...(meta?.portfolios ?? []).map((id) => [id, id] as [string, string])]}
           />
           <Select
-            label="Underwriting year"
+            label="Tegningsår"
             value={filters.year}
             onChange={(year) => setFilters({ ...filters, year })}
-            options={[["", "All years"], ...(meta?.underwriting_years ?? []).map((year) => [String(year), String(year)] as [string, string])]}
+            options={[["", "Alle år"], ...(meta?.underwriting_years ?? []).map((year) => [String(year), String(year)] as [string, string])]}
           />
           <Select
             label="Region"
             value={filters.region}
             onChange={(region) => setFilters({ ...filters, region })}
-            options={[["", "All regions"], ...(meta?.regions ?? []).map((region) => [region, region] as [string, string])]}
+            options={[["", "Alle regioner"], ...(meta?.regions ?? []).map((region) => [region, region] as [string, string])]}
           />
           <Select
-            label="Asset type"
+            label="Ejendomstype"
             value={filters.assetType}
             onChange={(assetType) => setFilters({ ...filters, assetType })}
-            options={[["", "All types"], ...(meta?.asset_types ?? []).map((kind) => [kind, kind] as [string, string])]}
+            options={[["", "Alle typer"], ...(meta?.asset_types ?? []).map((kind) => [kind, danishLabel(kind)] as [string, string])]}
           />
         </div>
 
         {experience && (
           <div className="headline">
-            <Figure label="Earned premium" value={formatMoney(experience.totals.earned_premium_dkk)} />
-            <Figure label="Incurred loss" value={formatMoney(experience.totals.incurred_loss_dkk)} />
-            <Figure label="Loss ratio" value={formatRatio(experience.totals.loss_ratio)} bad={isBad(experience.totals.loss_ratio)} />
-            <Figure label="Claims" value={formatCount(experience.totals.claim_count)} />
+            <Figure label="Optjent præmie" value={formatMoney(experience.totals.earned_premium_dkk)} />
+            <Figure label="Skadeudgift" value={formatMoney(experience.totals.incurred_loss_dkk)} />
+            <Figure label="Skadeprocent" value={formatRatio(experience.totals.loss_ratio)} bad={isBad(experience.totals.loss_ratio)} />
+            <Figure label="Skader" value={formatCount(experience.totals.claim_count)} />
           </div>
         )}
 
@@ -158,7 +167,7 @@ export default function App() {
 
       {quality && (
         <details className="panel quality" open>
-          <summary>Data quality</summary>
+          <summary>Datakvalitet</summary>
           <ul>
             {quality.notes.map((note) => (
               <li key={note}>{note}</li>
@@ -175,16 +184,16 @@ export default function App() {
 function PortfolioTable({ rows, onPick }: { rows: PortfolioRow[]; onPick: (id: string) => void }) {
   return (
     <table>
-      <caption>Worst loss ratio first. Claim count includes withdrawn and declined claims; they add nothing to incurred loss.</caption>
+      <caption>Højeste skadeprocent først. Antallet tæller også afviste og tilbagekaldte skader. De lægger 0 kr. til skadeudgiften.</caption>
       <thead>
         <tr>
-          <th>Portfolio</th>
-          <th>Policies</th>
-          <th>Earned premium</th>
-          <th>Incurred loss</th>
-          <th>Loss ratio</th>
-          <th>Claims</th>
-          <th>Largest claim</th>
+          <th>Portefølje</th>
+          <th>Policer</th>
+          <th>Optjent præmie</th>
+          <th>Skadeudgift</th>
+          <th>Skadeprocent</th>
+          <th>Skader</th>
+          <th>Største skade</th>
         </tr>
       </thead>
       <tbody>
@@ -207,16 +216,16 @@ function PortfolioTable({ rows, onPick }: { rows: PortfolioRow[]; onPick: (id: s
 function PerilTable({ rows }: { rows: PerilRow[] }) {
   return (
     <table>
-      <caption>Worst loss ratio first. Claim count includes withdrawn and declined claims; they add nothing to incurred loss.</caption>
+      <caption>Højeste skadeprocent først. Antallet tæller også afviste og tilbagekaldte skader. De lægger 0 kr. til skadeudgiften.</caption>
       <thead>
         <tr>
-          <th>Peril</th>
-          <th>Policies</th>
-          <th>Earned premium</th>
-          <th>Incurred loss</th>
-          <th>Loss ratio</th>
-          <th>Claims</th>
-          <th>Largest claim</th>
+          <th>Fare</th>
+          <th>Policer</th>
+          <th>Optjent præmie</th>
+          <th>Skadeudgift</th>
+          <th>Skadeprocent</th>
+          <th>Skader</th>
+          <th>Største skade</th>
         </tr>
       </thead>
       <tbody>

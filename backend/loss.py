@@ -440,51 +440,51 @@ def _overlapping_pairs(policies: list[Policy]) -> int:
 def _notes(quality: Quality) -> list[str]:
     notes = [
         (
-            f"{quality.perils_relabelled} policy rows had a peril label with odd case or spaces. "
-            "They are grouped under the cleaned name and kept in the figures."
+            f"{quality.perils_relabelled} policer har en fare skrevet med forkert brug af store bogstaver eller mellemrum. "
+            "De er samlet under det ensrettede navn og tæller med."
         ),
         (
-            f"{quality.claim_loss_dates_dmy} loss dates on claims we kept were DD-MM-YYYY rather than YYYY-MM-DD. "
-            "They are parsed and kept."
+            f"{quality.claim_loss_dates_dmy} skadedatoer på skader, vi har beholdt, er skrevet DD-MM-ÅÅÅÅ i stedet for ÅÅÅÅ-MM-DD. "
+            "De er læst rigtigt og tæller med."
         ),
         (
-            f"{quality.claims_excluded_unknown_policy} claims point at a policy that is not in the file. "
-            f"They are excluded. Paid amount converted where possible: {_dkk(quality.orphan_paid_dkk)}."
+            f"{quality.claims_excluded_unknown_policy} skader peger på en police, der ikke findes i filen. "
+            f"De er udeladt. Udbetalt beløb, hvor det kunne omregnes: {_dkk(quality.orphan_paid_dkk)}"
         ),
         (
-            f"{quality.negative_paid_count} settled claims have a negative paid amount. "
-            f"Treated as recoveries, which lowers incurred loss by {_dkk(abs(quality.negative_paid_dkk))}."
+            f"{quality.negative_paid_count} afsluttede skader har et negativt udbetalt beløb. "
+            f"De tæller som penge, der er kommet retur, og sænker skadeudgiften med {_dkk(abs(quality.negative_paid_dkk))}"
         ),
         (
-            f"{quality.settled_with_reserve} settled claims still carry a reserve. "
-            f"That reserve is not incurred loss ({_dkk(quality.ignored_reserve_dkk)} left out)."
+            f"{quality.settled_with_reserve} afsluttede skader har stadig en hensættelse. "
+            f"Den tæller ikke med i skadeudgiften ({_dkk(quality.ignored_reserve_dkk)} er holdt ude)."
         ),
         (
-            f"{quality.before_inception} claims are dated before inception and "
-            f"{quality.after_expiry} are dated after expiry. "
-            "They stay in, because the claim is booked to that policy."
+            f"{quality.before_inception} skader ligger før policens start, og "
+            f"{quality.after_expiry} ligger efter udløb. "
+            "De tæller med, fordi skaden er bogført på den police."
         ),
         (
-            f"{quality.overlapping_cover_pairs} pairs of policies cover the same asset and peril "
-            "on overlapping dates. Both annual premiums are counted. This exercise does not pro-rate."
+            f"{quality.overlapping_cover_pairs} par af policer dækker samme ejendom og samme fare i overlappende perioder. "
+            "Begge årpræmier tæller med. Præmien er ikke fordelt forholdsmæssigt."
         ),
-        "Premiums use the inception-month exchange rate. Claims use the loss-month rate. Figures are in DKK.",
+        "Præmien omregnes med kursen i startmåneden. Skaden omregnes med kursen i skademåneden. Beløb er i kroner.",
     ]
     dropped = quality.policies_excluded_bad_row + quality.claims_excluded_bad_row
     if dropped:
         notes.append(
-            f"{dropped} rows were excluded because a date, amount, status, or exchange rate "
-            "was missing or invalid."
+            f"{dropped} rækker er udeladt, fordi en dato, et beløb, en status eller en valutakurs "
+            "manglede eller ikke kunne læses."
         )
     if quality.nil_claims_with_paid:
         notes.append(
-            f"{quality.nil_claims_with_paid} withdrawn or declined claims had a non-zero paid amount. "
-            "Their incurred loss is still zero."
+            f"{quality.nil_claims_with_paid} afviste eller tilbagekaldte skader havde et udbetalt beløb. "
+            "Deres skadeudgift er stadig 0 kr."
         )
     if quality.policies_excluded_unknown_asset:
         notes.append(
-            f"{quality.policies_excluded_unknown_asset} policies point at an asset that is not in the file. "
-            "They are excluded."
+            f"{quality.policies_excluded_unknown_asset} policer peger på en ejendom, der ikke findes i filen. "
+            "De er udeladt."
         )
     return notes
 
@@ -497,7 +497,7 @@ def _dkk(amount: Decimal) -> str:
     while whole:
         groups.append(whole[-3:])
         whole = whole[:-3]
-    return f"{sign}{','.join(reversed(groups))}.{fraction} DKK"
+    return f"{sign}{'.'.join(reversed(groups))},{fraction} kr."
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:

@@ -7,69 +7,87 @@ from pathlib import Path
 
 Column = tuple[str, str]
 
+# Shown in the Danish UI. Search matches both the file word and this word.
+DANISH = {
+    "agricultural": "landbrug",
+    "commercial": "erhverv",
+    "industrial": "industri",
+    "public": "offentlig",
+    "residential": "bolig",
+    "fire": "brand",
+    "flood": "oversvømmelse",
+    "hail": "hagl",
+    "storm": "storm",
+    "subsidence": "sætning",
+    "settled": "afsluttet",
+    "open": "åben",
+    "withdrawn": "trukket tilbage",
+    "declined": "afvist",
+}
+
 ASSETS: list[Column] = [
-    ("asset_id", "Asset"),
-    ("portfolio_id", "Portfolio"),
+    ("asset_id", "Ejendom"),
+    ("portfolio_id", "Portefølje"),
     ("region", "Region"),
     ("asset_type", "Type"),
-    ("construction_year", "Built"),
-    ("sum_insured_dkk", "Sum insured"),
+    ("construction_year", "Opført"),
+    ("sum_insured_dkk", "Forsikringssum"),
 ]
 POLICIES: list[Column] = [
-    ("policy_id", "Policy"),
-    ("asset_id", "Asset"),
-    ("portfolio_id", "Portfolio"),
+    ("policy_id", "Police"),
+    ("asset_id", "Ejendom"),
+    ("portfolio_id", "Portefølje"),
     ("region", "Region"),
     ("asset_type", "Type"),
-    ("peril", "Peril"),
-    ("peril_group", "Peril, cleaned"),
-    ("inception_date", "Inception"),
-    ("expiry_date", "Expiry"),
-    ("annual_premium", "Premium"),
-    ("currency", "Currency"),
+    ("peril", "Fare"),
+    ("peril_group", "Fare, ensrettet"),
+    ("inception_date", "Start"),
+    ("expiry_date", "Udløb"),
+    ("annual_premium", "Årpræmie"),
+    ("currency", "Valuta"),
 ]
 CLAIMS: list[Column] = [
-    ("claim_id", "Claim"),
-    ("policy_id", "Policy"),
-    ("policy_found", "Policy found"),
-    ("portfolio_id", "Portfolio"),
-    ("asset_id", "Asset"),
-    ("peril_group", "Peril, cleaned"),
-    ("loss_date", "Loss date"),
-    ("reported_date", "Reported"),
-    ("paid_amount", "Paid"),
-    ("reserve_amount", "Reserve"),
-    ("currency", "Currency"),
+    ("claim_id", "Skade"),
+    ("policy_id", "Police"),
+    ("policy_found", "Police fundet"),
+    ("portfolio_id", "Portefølje"),
+    ("asset_id", "Ejendom"),
+    ("peril_group", "Fare, ensrettet"),
+    ("loss_date", "Skadedato"),
+    ("reported_date", "Anmeldt"),
+    ("paid_amount", "Udbetalt"),
+    ("reserve_amount", "Hensættelse"),
+    ("currency", "Valuta"),
     ("status", "Status"),
 ]
 FX: list[Column] = [
-    ("month", "Month"),
-    ("currency", "Currency"),
-    ("rate_dkk_per_unit", "DKK per unit"),
+    ("month", "Måned"),
+    ("currency", "Valuta"),
+    ("rate_dkk_per_unit", "Kr. pr. enhed"),
 ]
 
 SPECS: dict[str, dict[str, object]] = {
     "assets": {
-        "label": "Assets",
-        "blurb": "Insured properties. Each one belongs to one portfolio.",
+        "label": "Ejendomme",
+        "blurb": "Forsikrede ejendomme. Hver ligger i én portefølje.",
         "columns": ASSETS,
         "filters": ["portfolio_id", "region", "asset_type"],
     },
     "policies": {
-        "label": "Policies",
-        "blurb": "One year of cover on a property, for one peril. Portfolio comes from the asset.",
+        "label": "Policer",
+        "blurb": "Et års dækning af en ejendom, for én fare. Porteføljen kommer fra ejendommen.",
         "columns": POLICIES,
         "filters": ["portfolio_id", "region", "asset_type", "peril_group", "currency"],
     },
     "claims": {
-        "label": "Claims",
-        "blurb": "Money paid or reserved against a policy. Policy found = no means the policy id is not in the file.",
+        "label": "Skader",
+        "blurb": "Udbetalt eller hensat på en police. «Police fundet = nej» betyder, at policen ikke findes i filen.",
         "columns": CLAIMS,
         "filters": ["portfolio_id", "status", "currency", "policy_found", "peril_group"],
     },
     "fx-rates": {
-        "label": "Exchange rates",
-        "blurb": "Month-end rates into DKK.",
+        "label": "Valutakurser",
+        "blurb": "Månedens slutkurs omregnet til kroner.",
         "columns": FX,
         "filters": ["currency"],
     },
@@ -94,7 +112,7 @@ def load_tables(data_dir: Path) -> dict[str, list[dict[str, str]]]:
     policy_by_id = {row["policy_id"].strip(): row for row in policies if row.get("policy_id")}
     for row in claims:
         policy = policy_by_id.get(row.get("policy_id", "").strip())
-        row["policy_found"] = "yes" if policy else "no"
+        row["policy_found"] = "ja" if policy else "nej"
         row["portfolio_id"] = policy.get("portfolio_id", "") if policy else ""
         row["asset_id"] = policy.get("asset_id", "").strip() if policy else ""
         row["peril_group"] = policy.get("peril_group", "") if policy else ""
@@ -166,7 +184,12 @@ def _keep(row: dict[str, str], columns: list[Column], q: str, filters: dict[str,
     needle = q.strip().lower()
     if not needle:
         return True
-    return any(needle in (row.get(key, "") or "").lower() for key, _label in columns)
+    return any(needle in _searchable(row.get(key, "") or "") for key, _label in columns)
+
+
+def _searchable(value: str) -> str:
+    shown = DANISH.get(value, "")
+    return f"{value} {shown}".lower()
 
 
 def _options(rows: list[dict[str, str]], key: str) -> list[str]:

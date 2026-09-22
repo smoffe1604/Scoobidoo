@@ -48,7 +48,7 @@ def test_quality_report_matches_the_hand_count():
     assert quality.after_expiry == 0
     assert quality.nil_claims_with_paid == 1
     assert quality.claims_included == 6
-    assert any("excluded" in note for note in quality.notes)
+    assert any("udeladt" in note for note in quality.notes)
 
 
 def test_worst_loss_ratio_is_ranked_first():

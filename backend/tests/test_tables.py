@@ -32,10 +32,10 @@ def test_real_tables_join_portfolio_onto_claims():
     assert len(tables["assets"]) == 4200
     assert len(tables["policies"]) == 11560
     assert len(tables["claims"]) == 4509
-    orphans = [row for row in tables["claims"] if row["policy_found"] == "no"]
+    orphans = [row for row in tables["claims"] if row["policy_found"] == "nej"]
     assert len(orphans) == 260
     assert all(row["portfolio_id"] == "" for row in orphans)
-    placed = query_table(tables, "claims", filters={"policy_found": "yes", "portfolio_id": "PF-01"}, limit=5)
+    placed = query_table(tables, "claims", filters={"policy_found": "ja", "portfolio_id": "PF-01"}, limit=5)
     assert placed is not None
     assert placed["matched"] > 0
     assert placed["rows"][0]["portfolio_id"] == "PF-01"

@@ -67,11 +67,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         loaded = book()
         if underwriting_year is not None and underwriting_year not in loaded.underwriting_years:
             known = ", ".join(str(year) for year in loaded.underwriting_years)
-            raise HTTPException(status_code=400, detail=f"Unknown underwriting year. Known years: {known}.")
+            raise HTTPException(status_code=400, detail=f"Ukendt tegningsår. Kendte år: {known}.")
         if region is not None and region not in loaded.regions:
-            raise HTTPException(status_code=400, detail=f"Unknown region '{region}'.")
+            raise HTTPException(status_code=400, detail=f"Ukendt region '{region}'.")
         if asset_type is not None and asset_type not in loaded.asset_types:
-            raise HTTPException(status_code=400, detail=f"Unknown asset type '{asset_type}'.")
+            raise HTTPException(status_code=400, detail=f"Ukendt ejendomstype '{asset_type}'.")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -149,7 +149,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             asset_type=asset_type,
         )
         if found is None:
-            raise HTTPException(status_code=404, detail=f"Unknown portfolio '{portfolio_id}'.")
+            raise HTTPException(status_code=404, detail=f"Ukendt portefølje '{portfolio_id}'.")
         totals, perils = found
         return {
             "portfolio_id": portfolio_id,
@@ -185,7 +185,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             limit=limit,
         )
         if found is None:
-            raise HTTPException(status_code=404, detail=f"Unknown table '{name}'.")
+            raise HTTPException(status_code=404, detail=f"Ukendt tabel '{name}'.")
         return found
 
     dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
@@ -196,6 +196,13 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         @app.get("/")
         def index() -> FileResponse:
             return FileResponse(dist / "index.html")
+
+        regions = dist / "regions.geojson"
+        if regions.is_file():
+
+            @app.get("/regions.geojson")
+            def region_outlines() -> FileResponse:
+                return FileResponse(regions, media_type="application/geo+json")
 
     return app
 

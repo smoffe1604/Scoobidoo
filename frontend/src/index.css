@@ -40,6 +40,30 @@ td button {
 
 .nav { margin-top: 16px; }
 
+.region-map { height: 440px; }
+
+.map-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px 12px;
+  color: #6b645b;
+  font-size: 13px;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.swatch.low { background: #2f6b4f; }
+.swatch.mid { background: #c4a15a; }
+.swatch.high { background: #9f2d2d; }
+
 .nav button, .tabs button, .pager button {
   background: transparent;
   border: 1px solid #ddd6c8;
@@ -222,3 +246,27 @@ td.bad { color: #9f2d2d; font-weight: 650; }
 @media (max-width: 720px) {
   .headline { grid-template-columns: 1fr 1fr; }
 }
+
+.region-map { height: 440px; }
+
+.map-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px 12px;
+  color: #6b645b;
+  font-size: 13px;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.swatch.low { background: #2f6b4f; }
+.swatch.mid { background: #c4a15a; }
+.swatch.high { background: #9f2d2d; }
