@@ -1,0 +1,9 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8010:8010"
+    environment:
+      SCOOBIDOO_DATA: /data
+    volumes:
+      - ./data:/data:ro
