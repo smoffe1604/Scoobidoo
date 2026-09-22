@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import DataBrowser from "./DataBrowser";
 import { danishLabel } from "./labels";
 import RegionMap from "./RegionMap";
+import TaskBrief from "./TaskBrief";
 
 type Filters = {
   portfolioId: string;
@@ -57,6 +58,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const path = usePath();
   const onData = path === "/kildedata" || path === "/kildedata/";
+  const onTask = path === "/opgavebeskrivelser" || path === "/opgavebeskrivelser/";
 
   useEffect(() => {
     Promise.all([getJson<Meta>("/meta"), getJson<Quality>("/data-quality")])
@@ -108,8 +110,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    document.title = onData ? "Kildedata" : "Skadesforløb";
-  }, [onData]);
+    document.title = onTask ? "Opgavebeskrivelser" : onData ? "Kildedata" : "Skadesforløb";
+  }, [onData, onTask]);
 
   const book = comparison?.totals ?? null;
   const ratioById = new Map((comparison?.portfolios ?? []).map((row) => [row.portfolio_id, row.loss_ratio]));
@@ -126,26 +128,39 @@ export default function App() {
     <main className="page">
       <header className="top">
         <div className="title-row">
-          {onData && (
+          {(onData || onTask) && (
             <a className="icon-button" href="/" aria-label="Tilbage" onClick={(event) => follow(event, "/")}>
               <BackIcon />
             </a>
           )}
           <div>
-            <h1>{onData ? "Kildedata" : "Skadesforløb"}</h1>
-            <p>{onData ? "De fire filer, tallene er regnet ud fra." : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}</p>
+            <h1>{onTask ? "Opgavebeskrivelser" : onData ? "Kildedata" : "Skadesforløb"}</h1>
+            <p>
+              {onTask
+                ? "Briefet og hvordan opgaven bliver vurderet."
+                : onData
+                  ? "De fire filer, tallene er regnet ud fra."
+                  : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
+            </p>
           </div>
         </div>
-        {!onData && (
-          <nav className="top-nav" aria-label="Andre sider">
-            <a className="icon-button" href="/kildedata" aria-label="Kildedata" onClick={(event) => follow(event, "/kildedata")}>
-              <TableIcon />
-            </a>
-          </nav>
-        )}
       </header>
+      <nav className="corner-nav" aria-label="Andre sider">
+        <a className={onData ? "on" : undefined} href="/kildedata" onClick={(event) => follow(event, "/kildedata")}>
+          Kildedata
+        </a>
+        <a
+          className={onTask ? "on" : undefined}
+          href="/opgavebeskrivelser"
+          onClick={(event) => follow(event, "/opgavebeskrivelser")}
+        >
+          Opgavebeskrivelser
+        </a>
+      </nav>
 
-      {onData ? (
+      {onTask ? (
+        <TaskBrief />
+      ) : onData ? (
         <DataBrowser />
       ) : (
         <>
@@ -403,15 +418,6 @@ function follow(event: { preventDefault: () => void; metaKey: boolean; ctrlKey: 
   event.preventDefault();
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function TableIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-      <rect x="1.25" y="1.25" width="15.5" height="15.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M1.25 6.5h15.5M1.25 11.5h15.5M6.75 6.5V16.75" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
 }
 
 function BackIcon() {
