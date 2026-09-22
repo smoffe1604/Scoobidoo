@@ -155,6 +155,15 @@ export default function App() {
         </div>
       </header>
       <nav className="corner-nav" aria-label="Andre sider">
+        {!onTask && (
+          <a
+            className="corner-label"
+            href="/opgavebeskrivelser"
+            onClick={(event) => follow(event, "/opgavebeskrivelser")}
+          >
+            Opgavebeskrivelser
+          </a>
+        )}
         {!onData && (
           <a
             className="icon-button"
@@ -163,15 +172,6 @@ export default function App() {
             onClick={(event) => follow(event, "/kildedata")}
           >
             <TableIcon />
-          </a>
-        )}
-        {!onTask && (
-          <a
-            className="corner-label"
-            href="/opgavebeskrivelser"
-            onClick={(event) => follow(event, "/opgavebeskrivelser")}
-          >
-            Opgavebeskrivelser
           </a>
         )}
       </nav>
