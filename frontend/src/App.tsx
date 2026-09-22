@@ -146,15 +146,16 @@ export default function App() {
         </div>
       </header>
       <nav className="corner-nav" aria-label="Andre sider">
-        <a className={onData ? "on" : undefined} href="/kildedata" onClick={(event) => follow(event, "/kildedata")}>
-          Kildedata
+        <a className={onData ? "on" : undefined} href="/kildedata" aria-label="Kildedata" onClick={(event) => follow(event, "/kildedata")}>
+          <TableIcon />
         </a>
         <a
           className={onTask ? "on" : undefined}
           href="/opgavebeskrivelser"
+          aria-label="Opgavebeskrivelser"
           onClick={(event) => follow(event, "/opgavebeskrivelser")}
         >
-          Opgavebeskrivelser
+          <BriefIcon />
         </a>
       </nav>
 
@@ -418,6 +419,24 @@ function follow(event: { preventDefault: () => void; metaKey: boolean; ctrlKey: 
   event.preventDefault();
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function TableIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 18 18" aria-hidden="true">
+      <rect x="1.25" y="1.25" width="15.5" height="15.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M1.25 6.5h15.5M1.25 11.5h15.5M6.75 6.5V16.75" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function BriefIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M4 2.25h7.2L15 6v9.75H4z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M11 2.5V6h3.4M6.25 9h5.5M6.25 12h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function BackIcon() {
