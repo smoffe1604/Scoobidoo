@@ -13,3 +13,6 @@ build/
 # The exercise data is not part of the submission.
 data/
 candidate-pack/
+
+# Personal hosting: ssh alias, server paths, nginx and pm2 config.
+deploy/

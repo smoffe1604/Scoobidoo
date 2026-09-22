@@ -56,7 +56,7 @@ Open http://127.0.0.1:5173. The dev server proxies the API on port 8010.
 
 `npm run build` writes `frontend/dist`. Uvicorn then serves that page at http://127.0.0.1:8010/ as well.
 
-A live copy runs at https://scoobidoo.bils.hair. `deploy.sh` and `deploy/` are the scripts that put it there; they are not needed to run the service.
+A live copy runs at https://scoobidoo.bils.hair.
 
 ## Checking the numbers
 
