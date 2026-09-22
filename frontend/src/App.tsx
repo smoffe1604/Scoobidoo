@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import DataBrowser from "./DataBrowser";
 import { danishLabel } from "./labels";
 import RegionMap from "./RegionMap";
+import TaskBrief from "./TaskBrief";
 
 type Filters = {
   portfolioId: string;
@@ -57,6 +58,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const path = usePath();
   const onData = path === "/kildedata" || path === "/kildedata/";
+  const onTask = path === "/opgave" || path === "/opgave/";
   const detailRef = useRef<HTMLElement>(null);
   const scrollDetail = useRef(false);
 
@@ -122,40 +124,56 @@ export default function App() {
   }
 
   useEffect(() => {
-    document.title = onData ? "Kildedata" : "Skadesforløb";
-  }, [onData]);
+    document.title = onTask ? "Opgave" : onData ? "Kildedata" : "Skadesforløb";
+  }, [onData, onTask]);
 
   return (
     <main className="page">
       <header className="top">
         <div className="title-row">
-          {onData && (
+          {(onData || onTask) && (
             <a className="icon-button" href="/" aria-label="Tilbage" onClick={(event) => follow(event, "/")}>
               <BackIcon />
             </a>
           )}
           <div>
-            <h1>{onData ? "Kildedata" : "Skadesforløb"}</h1>
+            <h1>{onTask ? "Opgave" : onData ? "Kildedata" : "Skadesforløb"}</h1>
             <p>
-              {onData
-                ? "De fire filer, tallene er regnet ud fra."
-                : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
+              {onTask
+                ? "Briefet og hvordan opgaven bliver vurderet."
+                : onData
+                  ? "De fire filer, tallene er regnet ud fra."
+                  : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
             </p>
           </div>
         </div>
-        {!onData && (
-          <a
-            className="icon-button"
-            href="/kildedata"
-            aria-label="Kildedata"
-            onClick={(event) => follow(event, "/kildedata")}
-          >
-            <TableIcon />
-          </a>
-        )}
+        <div className="header-actions">
+          {!onTask && (
+            <a
+              className="icon-button"
+              href="/opgave"
+              aria-label="Opgave"
+              onClick={(event) => follow(event, "/opgave")}
+            >
+              <DocIcon />
+            </a>
+          )}
+          {!onData && (
+            <a
+              className="icon-button"
+              href="/kildedata"
+              aria-label="Kildedata"
+              onClick={(event) => follow(event, "/kildedata")}
+            >
+              <TableIcon />
+            </a>
+          )}
+        </div>
       </header>
 
-      {onData ? (
+      {onTask ? (
+        <TaskBrief />
+      ) : onData ? (
         <DataBrowser />
       ) : (
         <>
@@ -376,6 +394,15 @@ function follow(event: { preventDefault: () => void; metaKey: boolean; ctrlKey: 
   event.preventDefault();
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function DocIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M4.25 1.75h6.1L14.75 6.15V16.25h-10.5z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M10.15 1.75v4.5h4.6M6.5 9.25h5M6.5 12.25h5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function TableIcon() {
