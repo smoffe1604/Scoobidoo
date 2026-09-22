@@ -91,6 +91,7 @@ export default function DataBrowser() {
     rememberedTable = next;
     setName(next);
     setQuery(remembered[next] ?? blank());
+    setPage(null);
   }
 
   function update(next: Remembered) {
