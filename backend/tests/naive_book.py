@@ -1,0 +1,82 @@
+"""A straight CSV walk, separate from loss.py, used to check the real book.
+
+Same rules: full annual premium, settled = paid, open = paid + reserve,
+withdrawn and declined = 0, inception-month rate for premium, loss-month
+rate for claims, unknown policies left out, perils stripped and lowercased.
+"""
+
+from __future__ import annotations
+
+import csv
+from datetime import datetime
+from decimal import Decimal
+from pathlib import Path
+
+
+def portfolio_totals(data_dir: Path) -> dict[str, tuple[Decimal, Decimal, int, int]]:
+    assets = _rows(data_dir / "assets.csv")
+    policies = _rows(data_dir / "policies.csv")
+    claims = _rows(data_dir / "claims.csv")
+    fx = _rows(data_dir / "fx_rates.csv")
+    asset_by_id = {row["asset_id"]: row for row in assets}
+    rates = {
+        (row["month"], row["currency"]): Decimal(row["rate_dkk_per_unit"])
+        for row in fx
+    }
+
+    earned: dict[str, Decimal] = {}
+    incurred: dict[str, Decimal] = {}
+    policy_count: dict[str, int] = {}
+    claim_count: dict[str, int] = {}
+    policy_portfolio: dict[str, str] = {}
+
+    for row in policies:
+        asset = asset_by_id[row["asset_id"]]
+        portfolio_id = asset["portfolio_id"]
+        inception = datetime.strptime(row["inception_date"], "%Y-%m-%d").date()
+        premium = Decimal(row["annual_premium"]) * rates[(f"{inception:%Y-%m}", row["currency"])]
+        earned[portfolio_id] = earned.get(portfolio_id, Decimal(0)) + premium
+        policy_count[portfolio_id] = policy_count.get(portfolio_id, 0) + 1
+        policy_portfolio[row["policy_id"]] = portfolio_id
+
+    for row in claims:
+        portfolio_id = policy_portfolio.get(row["policy_id"])
+        if portfolio_id is None:
+            continue
+        loss_date = _parse_date(row["loss_date"])
+        paid = Decimal(row["paid_amount"])
+        reserve = Decimal(row["reserve_amount"])
+        status = row["status"]
+        if status in {"withdrawn", "declined"}:
+            amount = Decimal(0)
+        elif status == "settled":
+            amount = paid
+        else:
+            amount = paid + reserve
+        amount *= rates[(f"{loss_date:%Y-%m}", row["currency"])]
+        incurred[portfolio_id] = incurred.get(portfolio_id, Decimal(0)) + amount
+        claim_count[portfolio_id] = claim_count.get(portfolio_id, 0) + 1
+
+    return {
+        portfolio_id: (
+            earned.get(portfolio_id, Decimal(0)),
+            incurred.get(portfolio_id, Decimal(0)),
+            policy_count.get(portfolio_id, 0),
+            claim_count.get(portfolio_id, 0),
+        )
+        for portfolio_id in earned
+    }
+
+
+def _parse_date(value: str):
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(value)
+
+
+def _rows(path: Path) -> list[dict[str, str]]:
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))

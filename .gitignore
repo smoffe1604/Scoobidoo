@@ -5,6 +5,11 @@ Thumbs.db
 .env.*
 node_modules/
 __pycache__/
+.pytest_cache/
 .venv/
 dist/
 build/
+
+# The exercise data is not part of the submission.
+data/
+candidate-pack/
