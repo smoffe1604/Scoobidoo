@@ -44,24 +44,46 @@ export default function RegionMap({
       style: {
         version: 8,
         sources: {},
-        layers: [{ id: "background", type: "background", paint: { "background-color": "#e7e2d6" } }],
+        layers: [{ id: "background", type: "background", paint: { "background-color": "#beddf3" } }],
       },
       center: [10.6, 56.2],
       zoom: 5.4,
       attributionControl: false,
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.addControl(
-      new maplibregl.AttributionControl({ customAttribution: "Regioner: Dataforsyningen" }),
+      new maplibregl.AttributionControl({
+        customAttribution: "Regioner: Dataforsyningen. Lande: Natural Earth",
+      }),
       "bottom-right",
     );
     mapRef.current = map;
 
     map.on("load", () => {
-      void fetch("/regions.geojson")
-        .then((response) => response.json())
-        .then((data: { type: "FeatureCollection"; features: GeoJSON.Feature[] }) => {
+      void Promise.all([
+        fetch("/countries.geojson").then((response) => response.json()),
+        fetch("/regions.geojson").then((response) => response.json()),
+      ]).then(([countries, data]: [GeoJSON.FeatureCollection, GeoJSON.FeatureCollection]) => {
+          map.addSource("countries", { type: "geojson", data: countries });
+          map.addLayer({
+            id: "countries-fill",
+            type: "fill",
+            source: "countries",
+            paint: { "fill-color": "#e7e2d6" },
+          });
+          map.addLayer({
+            id: "countries-line",
+            type: "line",
+            source: "countries",
+            paint: { "line-color": "#8b90a8", "line-width": 1.25 },
+          });
           map.addSource("regions", { type: "geojson", data, promoteId: "region" });
+          map.addLayer({
+            id: "regions-land",
+            type: "fill",
+            source: "regions",
+            paint: { "fill-color": "#e7e2d6" },
+          });
           map.addLayer({
             id: "regions-fill",
             type: "fill",
@@ -99,10 +121,10 @@ export default function RegionMap({
           paint(map);
           map.fitBounds(
             [
-              [8.0, 54.5],
-              [15.3, 57.8],
+              [7.7, 54.25],
+              [15.5, 58.0],
             ],
-            { padding: 24, animate: false },
+            { padding: 20, animate: false },
           );
           map.on("click", "regions-fill", (event) => {
             const feature = event.features?.[0];

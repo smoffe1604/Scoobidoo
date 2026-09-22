@@ -131,7 +131,14 @@ export default function App() {
   }, [onData, onTask]);
 
   const book = comparison ? sumBook(comparison.portfolios) : null;
-  const portfolioChoices = comparison?.portfolios ?? meta?.portfolios.map((id) => ({ portfolio_id: id, loss_ratio: null as number | null })) ?? [];
+  const ratioById = new Map((comparison?.portfolios ?? []).map((row) => [row.portfolio_id, row.loss_ratio]));
+  const portfolioIds = [
+    ...(meta?.portfolios ?? comparison?.portfolios.map((row) => row.portfolio_id) ?? []),
+  ].sort((a, b) => a.localeCompare(b, "da", { numeric: true }));
+  const portfolioChoices = portfolioIds.map((id) => ({
+    portfolio_id: id,
+    loss_ratio: ratioById.get(id) ?? null,
+  }));
 
   return (
     <main className="page">
@@ -184,31 +191,33 @@ export default function App() {
         <>
       {error && <p className="error">{error}</p>}
 
+      <div className="dashboard">
+      <nav className="toc" aria-label="Portefølje">
+        <button
+          type="button"
+          className={filters.portfolioId ? undefined : "on"}
+          onClick={showAll}
+        >
+          <span className="chip-id">Alle</span>
+          <span className={isBad(book?.loss_ratio ?? null) ? "chip-ratio bad" : "chip-ratio"}>
+            {formatRatio(book?.loss_ratio ?? null)}
+          </span>
+        </button>
+        {portfolioChoices.map((row) => (
+          <button
+            key={row.portfolio_id}
+            type="button"
+            className={filters.portfolioId === row.portfolio_id ? "on" : undefined}
+            onClick={() => pickPortfolio(row.portfolio_id)}
+          >
+            <span className="chip-id">{row.portfolio_id}</span>
+            <span className={isBad(row.loss_ratio) ? "chip-ratio bad" : "chip-ratio"}>{formatRatio(row.loss_ratio)}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="dashboard-main">
       <section className="panel">
         <div className="scope">
-          <div className="chips" role="group" aria-label="Portefølje">
-            <button
-              type="button"
-              className={filters.portfolioId ? undefined : "on"}
-              onClick={showAll}
-            >
-              <span className="chip-id">Alle</span>
-              <span className={isBad(book?.loss_ratio ?? null) ? "chip-ratio bad" : "chip-ratio"}>
-                {formatRatio(book?.loss_ratio ?? null)}
-              </span>
-            </button>
-            {portfolioChoices.map((row) => (
-              <button
-                key={row.portfolio_id}
-                type="button"
-                className={filters.portfolioId === row.portfolio_id ? "on" : undefined}
-                onClick={() => pickPortfolio(row.portfolio_id)}
-              >
-                <span className="chip-id">{row.portfolio_id}</span>
-                <span className={isBad(row.loss_ratio) ? "chip-ratio bad" : "chip-ratio"}>{formatRatio(row.loss_ratio)}</span>
-              </button>
-            ))}
-          </div>
           <div className="filters">
             <Select
               label="Tegningsår"
@@ -282,6 +291,8 @@ export default function App() {
           </ul>
         </details>
       )}
+      </div>
+      </div>
         </>
       )}
     </main>
