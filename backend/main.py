@@ -12,7 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from loss import Book, Bucket, compare_portfolios, experience_for_portfolio, load_book
+from loss import (
+    Book,
+    Bucket,
+    compare_portfolios,
+    experience_for_book,
+    experience_for_portfolio,
+    load_book,
+)
 from tables import catalog, load_tables, query_table
 
 MONEY = Decimal("0.01")
@@ -94,17 +101,24 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return {
             "policies_included": quality.policies_included,
             "claims_included": quality.claims_included,
+            "policies_excluded_unknown_asset": quality.policies_excluded_unknown_asset,
+            "policies_excluded_bad_row": quality.policies_excluded_bad_row,
+            "duplicate_policy_ids": quality.duplicate_policy_ids,
             "claims_excluded_unknown_policy": quality.claims_excluded_unknown_policy,
             "excluded_unknown_policy_paid_dkk": _money(quality.orphan_paid_dkk),
-            "policies_excluded_unknown_asset": quality.policies_excluded_unknown_asset,
+            "claims_excluded_bad_row": quality.claims_excluded_bad_row,
+            "duplicate_claim_ids": quality.duplicate_claim_ids,
             "perils_relabelled": quality.perils_relabelled,
             "claim_loss_dates_dmy": quality.claim_loss_dates_dmy,
-            "claims_with_negative_paid": quality.negative_paid_count,
-            "negative_paid_dkk": _money(quality.negative_paid_dkk),
+            "claims_with_negative_paid_flipped": quality.negative_paid_count,
+            "negative_paid_flipped_dkk": _money(quality.negative_paid_dkk),
             "settled_with_reserve": quality.settled_with_reserve,
             "settled_reserve_ignored_dkk": _money(quality.ignored_reserve_dkk),
             "claims_before_inception": quality.before_inception,
             "claims_after_expiry": quality.after_expiry,
+            "claims_moved_to_covering_policy": quality.claims_moved_to_covering_policy,
+            "claims_excluded_outside_term": quality.claims_excluded_outside_term,
+            "excluded_outside_term_incurred_dkk": _money(quality.outside_term_incurred_dkk),
             "overlapping_cover_pairs": quality.overlapping_cover_pairs,
             "nil_claims_with_paid": quality.nil_claims_with_paid,
             "notes": quality.notes,
@@ -123,10 +137,17 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             region=region,
             asset_type=asset_type,
         )
+        totals = experience_for_book(
+            book(),
+            underwriting_year=underwriting_year,
+            region=region,
+            asset_type=asset_type,
+        )
         return {
             "currency": "DKK",
             "ranked_by": "loss_ratio_descending",
             "filters": _filters(underwriting_year, region, asset_type),
+            "totals": _json_bucket(totals),
             "portfolios": [
                 {"portfolio_id": portfolio_id, **_json_bucket(bucket)}
                 for portfolio_id, bucket in rows

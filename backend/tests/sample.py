@@ -7,9 +7,14 @@ Its claims are converted at the March 2024 rate of 8:
 - open paid 5 EUR plus reserve 5 EUR -> 80 DKK
 - declined paid 50 EUR -> 0
 - withdrawn -> 0
-- settled paid -2 EUR -> -16 DKK
+- settled paid -2.5 EUR -> read as a sign error, 20 DKK
 
-Incurred loss is 144 DKK. The largest claim is 80 DKK, not the ignored reserve.
+Incurred loss is 180 DKK, ratio 0.24. The largest claim is 80 DKK, not the
+ignored reserve.
+
+PF-01 fire (P2) incepts 2023-06-01. Its only claim C7 is dated and reported
+in February 2023, and no other fire policy on A1 covers that day, so C7 is
+excluded: fire has 0 claims and 1000 DKK premium.
 """
 
 ASSETS = [
@@ -107,7 +112,7 @@ CLAIMS = [
         "policy_id": "P1",
         "loss_date": "2024-03-10",
         "reported_date": "2024-03-11",
-        "paid_amount": "-2",
+        "paid_amount": "-2.5",
         "reserve_amount": "0",
         "currency": "EUR",
         "status": "settled",

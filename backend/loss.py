@@ -7,12 +7,16 @@ Rules, matching the brief:
 - Earned premium is the full annual premium. There is no pro-rata.
 - Money is converted to DKK at the month-end rate: the inception month for a
   premium, the loss month for a claim.
-- A claim stays in the result when its policy id exists, even if the loss
-  date falls outside the policy term.
+- A negative paid amount on a settled claim is read as a sign error and
+  counted as positive. The book has 262 of them, none with a reserve, and
+  their sizes follow the same distribution as the positive payments.
+- A claim whose loss date falls outside its policy term is moved to the
+  policy on the same asset and peril that was on risk that day. If there is
+  none, the claim is excluded: it was reported before the policy existed.
 - Peril labels are stripped and lowercased before policies are grouped.
+- The largest claim is the largest positive incurred amount.
 
-Rows that cannot be attached to a portfolio are counted on the quality
-report and left out of the ratios.
+Every row that is dropped or changed is counted on the quality report.
 """
 
 from __future__ import annotations
@@ -46,9 +50,9 @@ class Claim:
     claim_id: str
     policy_id: str
     incurred_dkk: Decimal
-    before_inception: bool
-    after_expiry: bool
     ignored_reserve_dkk: Decimal
+    sign_flipped: bool = False
+    moved_from_policy_id: str | None = None
 
 
 @dataclass
@@ -70,6 +74,9 @@ class Quality:
     ignored_reserve_dkk: Decimal = Decimal(0)
     before_inception: int = 0
     after_expiry: int = 0
+    claims_moved_to_covering_policy: int = 0
+    claims_excluded_outside_term: int = 0
+    outside_term_incurred_dkk: Decimal = Decimal(0)
     overlapping_cover_pairs: int = 0
     nil_claims_with_paid: int = 0
     notes: list[str] = field(default_factory=list)
@@ -169,14 +176,18 @@ def build_book(
         policy = _policy_from_row(row, asset_by_id, rates, seen_policy_ids, quality)
         if policy is not None:
             loaded_policies.append(policy)
-            if row["peril"].strip().lower() != row["peril"]:
+            raw_peril = row.get("peril") or ""
+            if raw_peril.strip().lower() != raw_peril:
                 quality.perils_relabelled += 1
 
     policy_by_id = {policy.policy_id: policy for policy in loaded_policies}
+    same_cover: dict[tuple[str, str], list[Policy]] = defaultdict(list)
+    for policy in loaded_policies:
+        same_cover[(policy.asset_id, policy.peril)].append(policy)
     claims_by_policy: dict[str, list[Claim]] = defaultdict(list)
     seen_claim_ids: set[str] = set()
     for row in claims:
-        claim = _claim_from_row(row, policy_by_id, rates, seen_claim_ids, quality)
+        claim = _claim_from_row(row, policy_by_id, same_cover, rates, seen_claim_ids, quality)
         if claim is not None:
             claims_by_policy[claim.policy_id].append(claim)
 
@@ -223,6 +234,24 @@ def experience_for_portfolio(
     ]
     perils.sort(key=_worst_first)
     return _bucket(selected, book.claims_by_policy), perils
+
+
+def experience_for_book(
+    book: Book,
+    *,
+    underwriting_year: int | None = None,
+    region: str | None = None,
+    asset_type: str | None = None,
+) -> Bucket:
+    """Totals across every portfolio, under the same filters."""
+    selected = _select_policies(
+        book,
+        portfolio_id=None,
+        underwriting_year=underwriting_year,
+        region=region,
+        asset_type=asset_type,
+    )
+    return _bucket(selected, book.claims_by_policy)
 
 
 def compare_portfolios(
@@ -281,7 +310,7 @@ def _bucket(policies: list[Policy], claims_by_policy: dict[str, list[Claim]]) ->
         for claim in claims_by_policy.get(policy.policy_id, ()):
             claim_count += 1
             incurred += claim.incurred_dkk
-            if largest is None or claim.incurred_dkk > largest:
+            if claim.incurred_dkk > 0 and (largest is None or claim.incurred_dkk > largest):
                 largest = claim.incurred_dkk
     return Bucket(
         policy_count=len(policies),
@@ -309,7 +338,10 @@ def _policy_from_row(
     quality: Quality,
 ) -> Policy | None:
     policy_id = _cell(row, "policy_id")
-    if not policy_id or policy_id in seen_policy_ids:
+    if not policy_id:
+        quality.policies_excluded_bad_row += 1
+        return None
+    if policy_id in seen_policy_ids:
         quality.duplicate_policy_ids += 1
         return None
     asset = asset_by_id.get(_cell(row, "asset_id"))
@@ -352,12 +384,16 @@ def _policy_from_row(
 def _claim_from_row(
     row: dict[str, str],
     policy_by_id: dict[str, Policy],
+    same_cover: dict[tuple[str, str], list[Policy]],
     rates: dict[tuple[str, str], Decimal],
     seen_claim_ids: set[str],
     quality: Quality,
 ) -> Claim | None:
     claim_id = _cell(row, "claim_id")
-    if not claim_id or claim_id in seen_claim_ids:
+    if not claim_id:
+        quality.claims_excluded_bad_row += 1
+        return None
+    if claim_id in seen_claim_ids:
         quality.duplicate_claim_ids += 1
         return None
     policy = policy_by_id.get(_cell(row, "policy_id"))
@@ -391,30 +427,54 @@ def _claim_from_row(
     seen_claim_ids.add(claim_id)
     if loss_kind == "dmy":
         quality.claim_loss_dates_dmy += 1
-    if status == "settled" and paid < 0:
-        quality.negative_paid_count += 1
-        quality.negative_paid_dkk += paid * rate
     if status in NIL_STATUSES and paid != 0:
         quality.nil_claims_with_paid += 1
+
+    moved_from: str | None = None
+    if loss_date < policy.inception or loss_date > policy.expiry:
+        if loss_date < policy.inception:
+            quality.before_inception += 1
+        else:
+            quality.after_expiry += 1
+        covering = _policy_on_risk(same_cover[(policy.asset_id, policy.peril)], loss_date)
+        if covering is None:
+            quality.claims_excluded_outside_term += 1
+            quality.outside_term_incurred_dkk += incurred_amount(status, abs(paid), reserve) * rate
+            return None
+        moved_from = policy.policy_id
+        policy = covering
+        quality.claims_moved_to_covering_policy += 1
+
+    sign_flipped = status not in NIL_STATUSES and paid < 0
+    if sign_flipped:
+        quality.negative_paid_count += 1
+        quality.negative_paid_dkk += abs(paid) * rate
+        paid = abs(paid)
     ignored = Decimal(0)
     if status == "settled" and reserve != 0:
         quality.settled_with_reserve += 1
         ignored = reserve * rate
         quality.ignored_reserve_dkk += ignored
-    before = loss_date < policy.inception
-    after = loss_date > policy.expiry
-    if before:
-        quality.before_inception += 1
-    if after:
-        quality.after_expiry += 1
     return Claim(
         claim_id=claim_id,
         policy_id=policy.policy_id,
         incurred_dkk=incurred_amount(status, paid, reserve) * rate,
-        before_inception=before,
-        after_expiry=after,
         ignored_reserve_dkk=ignored,
+        sign_flipped=sign_flipped,
+        moved_from_policy_id=moved_from,
     )
+
+
+def _policy_on_risk(candidates: list[Policy], loss_date: date) -> Policy | None:
+    """The policy on the same asset and peril whose term covers the day.
+
+    When two overlapping terms both cover it, the one that incepted most
+    recently is taken: it is the cover in force on that day.
+    """
+    covering = [p for p in candidates if p.inception <= loss_date <= p.expiry]
+    if not covering:
+        return None
+    return max(covering, key=lambda p: (p.inception, p.policy_id))
 
 
 def _overlapping_pairs(policies: list[Policy]) -> int:
@@ -452,28 +512,36 @@ def _notes(quality: Quality) -> list[str]:
             f"De er udeladt. Udbetalt beløb, hvor det kunne omregnes: {_dkk(quality.orphan_paid_dkk)}"
         ),
         (
-            f"{quality.negative_paid_count} afsluttede skader har et negativt udbetalt beløb. "
-            f"De tæller som penge, der er kommet retur, og sænker skadeudgiften med {_dkk(abs(quality.negative_paid_dkk))}"
+            f"{quality.negative_paid_count} skader har et negativt udbetalt beløb. "
+            "De har ingen hensættelse, og beløbene er lige så store som de positive, så de er læst som fortegnsfejl "
+            f"og tæller positivt: {_dkk(quality.negative_paid_dkk)} er lagt til skadeudgiften i stedet for at blive trukket fra."
         ),
         (
             f"{quality.settled_with_reserve} afsluttede skader har stadig en hensættelse. "
             f"Den tæller ikke med i skadeudgiften ({_dkk(quality.ignored_reserve_dkk)} er holdt ude)."
         ),
         (
-            f"{quality.before_inception} skader ligger før policens start, og "
-            f"{quality.after_expiry} ligger efter udløb. "
-            "De tæller med, fordi skaden er bogført på den police."
+            f"{quality.before_inception} skader er dateret før policens start, og {quality.after_expiry} efter udløb. "
+            f"{quality.claims_moved_to_covering_policy} af dem er flyttet til den police på samme ejendom og fare, der var i kraft på skadedagen. "
+            f"{quality.claims_excluded_outside_term} passer ingen police og er udeladt ({_dkk(quality.outside_term_incurred_dkk)}); "
+            "de blev også anmeldt, før policen fandtes."
         ),
         (
             f"{quality.overlapping_cover_pairs} par af policer dækker samme ejendom og samme fare i overlappende perioder. "
-            "Begge årpræmier tæller med. Præmien er ikke fordelt forholdsmæssigt."
+            "Ingen af dem er ens i startdato eller præmie, så de er læst som to reelle tegninger. "
+            "Begge årpræmier tæller med, uden forholdsmæssig fordeling."
         ),
         "Præmien omregnes med kursen i startmåneden. Skaden omregnes med kursen i skademåneden. Beløb er i kroner.",
     ]
+    duplicates = quality.duplicate_policy_ids + quality.duplicate_claim_ids
+    notes.append(
+        f"{quality.duplicate_policy_ids} police-id'er og {quality.duplicate_claim_ids} skade-id'er går igen i filerne. "
+        + ("Kun første forekomst tæller med." if duplicates else "Alle id'er er unikke.")
+    )
     dropped = quality.policies_excluded_bad_row + quality.claims_excluded_bad_row
     if dropped:
         notes.append(
-            f"{dropped} rækker er udeladt, fordi en dato, et beløb, en status eller en valutakurs "
+            f"{dropped} rækker er udeladt, fordi et id, en dato, et beløb, en status eller en valutakurs "
             "manglede eller ikke kunne læses."
         )
     if quality.nil_claims_with_paid:

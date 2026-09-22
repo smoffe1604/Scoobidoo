@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -28,12 +29,26 @@ def test_each_portfolio_matches_an_independent_csv_walk():
         assert totals.claim_count == claims
 
 
-def test_the_book_excludes_only_the_orphan_claims():
+def test_every_dropped_row_is_accounted_for():
     book = load_book(DATA_DIR)
-    assert book.quality.policies_included == 11560
-    assert book.quality.claims_excluded_unknown_policy == 260
-    assert book.quality.claims_included == 4509 - 260
-    assert book.quality.policies_excluded_unknown_asset == 0
-    assert book.quality.claims_excluded_bad_row == 0
-    assert book.quality.before_inception == 310
-    assert book.quality.after_expiry == 0
+    quality = book.quality
+    assert quality.policies_included == 11560
+    assert quality.policies_excluded_unknown_asset == 0
+    assert quality.policies_excluded_bad_row == 0
+    assert quality.duplicate_policy_ids == 0
+    assert quality.duplicate_claim_ids == 0
+    assert quality.claims_excluded_bad_row == 0
+    assert quality.claims_excluded_unknown_policy == 260
+    assert quality.before_inception == 310
+    assert quality.after_expiry == 0
+    assert quality.claims_moved_to_covering_policy == 83
+    assert quality.claims_excluded_outside_term == 227
+    assert quality.claims_included == 4509 - 260 - 227
+    assert quality.negative_paid_count == 249
+
+
+def test_the_book_ratio_is_where_the_hand_check_put_it():
+    book = load_book(DATA_DIR)
+    earned = sum((p.premium_dkk for p in book.policies), Decimal(0))
+    incurred = sum((c.incurred_dkk for cs in book.claims_by_policy.values() for c in cs), Decimal(0))
+    assert (incurred / earned).quantize(Decimal("0.001")) == Decimal("0.751")

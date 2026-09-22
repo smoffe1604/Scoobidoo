@@ -19,19 +19,31 @@ def test_flood_uses_paid_only_and_the_loss_month_rate():
     flood = peril("PF-01", "flood")
     assert flood.policy_count == 1
     assert flood.earned_premium_dkk == Decimal("750")
-    assert flood.incurred_loss_dkk == Decimal("144")
+    assert flood.incurred_loss_dkk == Decimal("180")
     assert flood.claim_count == 5
     assert flood.largest_claim_dkk == Decimal("80")
-    assert flood.loss_ratio == Decimal("0.192")
+    assert flood.loss_ratio == Decimal("0.24")
 
 
-def test_fire_keeps_a_claim_dated_before_inception_and_drops_its_reserve():
+def test_negative_paid_is_read_as_a_sign_error():
+    loaded = book()
+    flipped = [claim for claims in loaded.claims_by_policy.values() for claim in claims if claim.sign_flipped]
+    assert [claim.claim_id for claim in flipped] == ["C5"]
+    assert flipped[0].incurred_dkk == Decimal("20")
+
+
+def test_a_claim_reported_before_its_policy_existed_is_excluded():
     fire = peril("PF-01", "fire")
     assert fire.earned_premium_dkk == Decimal("1000")
-    assert fire.incurred_loss_dkk == Decimal("100")
-    assert fire.claim_count == 1
-    assert fire.largest_claim_dkk == Decimal("100")
-    assert fire.loss_ratio == Decimal("0.1")
+    assert fire.incurred_loss_dkk == Decimal("0")
+    assert fire.claim_count == 0
+    assert fire.largest_claim_dkk is None
+    assert fire.loss_ratio == Decimal("0")
+    quality = book().quality
+    assert quality.before_inception == 1
+    assert quality.claims_excluded_outside_term == 1
+    assert quality.claims_moved_to_covering_policy == 0
+    assert quality.outside_term_incurred_dkk == Decimal("100")
 
 
 def test_quality_report_matches_the_hand_count():
@@ -41,14 +53,103 @@ def test_quality_report_matches_the_hand_count():
     assert quality.claims_excluded_unknown_policy == 1
     assert quality.orphan_paid_dkk == Decimal("1000")
     assert quality.negative_paid_count == 1
-    assert quality.negative_paid_dkk == Decimal("-16")
-    assert quality.settled_with_reserve == 2
-    assert quality.ignored_reserve_dkk == Decimal("8032")
-    assert quality.before_inception == 1
+    assert quality.negative_paid_dkk == Decimal("20")
+    assert quality.settled_with_reserve == 1
+    assert quality.ignored_reserve_dkk == Decimal("7992")
     assert quality.after_expiry == 0
     assert quality.nil_claims_with_paid == 1
-    assert quality.claims_included == 6
+    assert quality.duplicate_policy_ids == 0
+    assert quality.duplicate_claim_ids == 0
+    assert quality.claims_included == 5
     assert any("udeladt" in note for note in quality.notes)
+    assert any("unikke" in note for note in quality.notes)
+
+
+def test_an_out_of_term_claim_moves_to_the_policy_on_risk_that_day():
+    assets = [_asset("A1", "PF-01")]
+    fx = [
+        {"month": "2022-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
+        {"month": "2022-09", "currency": "DKK", "rate_dkk_per_unit": "1"},
+        {"month": "2023-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
+    ]
+    policies = [
+        _policy("OLD", "2022-01-01", "2022-12-31", "100"),
+        _policy("NEW", "2023-01-01", "2023-12-31", "300"),
+    ]
+    claims = [_claim("C1", "NEW", "2022-09-10", "50", "0", "settled")]
+    loaded = build_book(assets, policies, claims, fx)
+    assert loaded.quality.before_inception == 1
+    assert loaded.quality.claims_moved_to_covering_policy == 1
+    assert loaded.quality.claims_excluded_outside_term == 0
+    assert [claim.claim_id for claim in loaded.claims_by_policy["OLD"]] == ["C1"]
+    assert loaded.claims_by_policy["OLD"][0].moved_from_policy_id == "NEW"
+    assert "NEW" not in loaded.claims_by_policy
+    rows = compare_portfolios(loaded, underwriting_year=2022)
+    assert rows[0][1].incurred_loss_dkk == Decimal("50")
+    assert rows[0][1].earned_premium_dkk == Decimal("100")
+
+
+def test_a_repeated_id_keeps_the_first_row_and_is_reported():
+    assets = [_asset("A1", "PF-01")]
+    fx = [
+        {"month": "2023-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
+        {"month": "2023-02", "currency": "DKK", "rate_dkk_per_unit": "1"},
+    ]
+    policies = [
+        _policy("P1", "2023-01-01", "2023-12-31", "100"),
+        _policy("P1", "2023-01-01", "2023-12-31", "999"),
+    ]
+    claims = [
+        _claim("C1", "P1", "2023-02-01", "10", "0", "settled"),
+        _claim("C1", "P1", "2023-02-01", "999", "0", "settled"),
+    ]
+    loaded = build_book(assets, policies, claims, fx)
+    assert loaded.quality.duplicate_policy_ids == 1
+    assert loaded.quality.duplicate_claim_ids == 1
+    found = experience_for_portfolio(loaded, "PF-01")
+    assert found is not None
+    assert found[0].earned_premium_dkk == Decimal("100")
+    assert found[0].incurred_loss_dkk == Decimal("10")
+    assert any("går igen" in note and "første forekomst" in note for note in loaded.quality.notes)
+
+
+def test_filters_combine_and_a_claim_after_expiry_is_handled_like_one_before():
+    assets = [_asset("A1", "PF-01", region="Hovedstaden", asset_type="residential"),
+              _asset("A2", "PF-01", region="Hovedstaden", asset_type="commercial")]
+    fx = [
+        {"month": "2023-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
+        {"month": "2024-03", "currency": "DKK", "rate_dkk_per_unit": "1"},
+    ]
+    policies = [
+        _policy("P1", "2023-01-01", "2023-12-31", "100", asset_id="A1"),
+        _policy("P2", "2023-01-01", "2023-12-31", "200", asset_id="A2"),
+    ]
+    claims = [_claim("LATE", "P1", "2024-03-01", "40", "0", "settled")]
+    loaded = build_book(assets, policies, claims, fx)
+    assert loaded.quality.after_expiry == 1
+    assert loaded.quality.claims_excluded_outside_term == 1
+    found = experience_for_portfolio(loaded, "PF-01", region="Hovedstaden", asset_type="commercial")
+    assert found is not None
+    assert found[0].policy_count == 1
+    assert found[0].earned_premium_dkk == Decimal("200")
+    found = experience_for_portfolio(loaded, "PF-01", region="Syddanmark", asset_type="commercial")
+    assert found is not None
+    assert found[0].policy_count == 0
+
+
+def test_largest_claim_ignores_nil_claims():
+    assets = [_asset("A1", "PF-01")]
+    fx = [
+        {"month": "2023-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
+        {"month": "2023-02", "currency": "DKK", "rate_dkk_per_unit": "1"},
+    ]
+    policies = [_policy("P1", "2023-01-01", "2023-12-31", "100")]
+    claims = [_claim("C1", "P1", "2023-02-01", "500", "0", "declined")]
+    loaded = build_book(assets, policies, claims, fx)
+    found = experience_for_portfolio(loaded, "PF-01")
+    assert found is not None
+    assert found[0].claim_count == 1
+    assert found[0].largest_claim_dkk is None
 
 
 def test_worst_loss_ratio_is_ranked_first():
@@ -75,16 +176,7 @@ def test_unknown_portfolio_is_missing():
 
 
 def test_overlapping_terms_both_count_and_a_shared_expiry_day_does_not():
-    assets = [
-        {
-            "asset_id": "A1",
-            "portfolio_id": "PF-01",
-            "region": "Hovedstaden",
-            "asset_type": "residential",
-            "construction_year": "1990",
-            "sum_insured_dkk": "1",
-        }
-    ]
+    assets = [_asset("A1", "PF-01")]
     fx = [
         {"month": "2023-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
         {"month": "2023-06", "currency": "DKK", "rate_dkk_per_unit": "1"},
@@ -120,65 +212,59 @@ def test_overlapping_terms_both_count_and_a_shared_expiry_day_does_not():
 
 
 def test_a_bad_row_is_excluded_instead_of_failing_the_load():
-    assets = [
-        {
-            "asset_id": "A1",
-            "portfolio_id": "PF-01",
-            "region": "Hovedstaden",
-            "asset_type": "residential",
-            "construction_year": "1990",
-            "sum_insured_dkk": "1",
-        }
-    ]
+    assets = [_asset("A1", "PF-01")]
     policies = [
         _policy("P1", "2023-01-01", "2023-12-31", "100"),
-        {
-            "policy_id": "P-missing-asset",
-            "asset_id": "NOPE",
-            "peril": "fire",
-            "inception_date": "2023-01-01",
-            "expiry_date": "2023-12-31",
-            "annual_premium": "999",
-            "currency": "DKK",
-        },
+        _policy("P-missing-asset", "2023-01-01", "2023-12-31", "999", asset_id="NOPE"),
+        _policy("", "2023-01-01", "2023-12-31", "999"),
     ]
     claims = [
-        {
-            "claim_id": "C-bad-date",
-            "policy_id": "P1",
-            "loss_date": "not-a-date",
-            "reported_date": "2023-02-01",
-            "paid_amount": "10",
-            "reserve_amount": "0",
-            "currency": "DKK",
-            "status": "settled",
-        },
-        {
-            "claim_id": "C-ok",
-            "policy_id": "P1",
-            "loss_date": "2023-02-01",
-            "reported_date": "2023-02-02",
-            "paid_amount": "10",
-            "reserve_amount": "0",
-            "currency": "DKK",
-            "status": "settled",
-        },
+        _claim("C-bad-date", "P1", "not-a-date", "10", "0", "settled"),
+        _claim("", "P1", "2023-02-01", "10", "0", "settled"),
+        _claim("C-ok", "P1", "2023-02-01", "10", "0", "settled"),
     ]
     fx = [{"month": "2023-01", "currency": "DKK", "rate_dkk_per_unit": "1"},
           {"month": "2023-02", "currency": "DKK", "rate_dkk_per_unit": "1"}]
     loaded = build_book(assets, policies, claims, fx)
     assert loaded.quality.policies_excluded_unknown_asset == 1
-    assert loaded.quality.claims_excluded_bad_row == 1
+    assert loaded.quality.policies_excluded_bad_row == 1
+    assert loaded.quality.claims_excluded_bad_row == 2
+    assert loaded.quality.duplicate_policy_ids == 0
+    assert loaded.quality.duplicate_claim_ids == 0
     assert loaded.quality.claims_included == 1
 
 
-def _policy(policy_id: str, inception: str, expiry: str, premium: str) -> dict[str, str]:
+def _asset(asset_id: str, portfolio_id: str, *, region: str = "Hovedstaden", asset_type: str = "residential") -> dict[str, str]:
+    return {
+        "asset_id": asset_id,
+        "portfolio_id": portfolio_id,
+        "region": region,
+        "asset_type": asset_type,
+        "construction_year": "1990",
+        "sum_insured_dkk": "1",
+    }
+
+
+def _policy(policy_id: str, inception: str, expiry: str, premium: str, *, asset_id: str = "A1") -> dict[str, str]:
     return {
         "policy_id": policy_id,
-        "asset_id": "A1",
+        "asset_id": asset_id,
         "peril": "storm",
         "inception_date": inception,
         "expiry_date": expiry,
         "annual_premium": premium,
         "currency": "DKK",
+    }
+
+
+def _claim(claim_id: str, policy_id: str, loss_date: str, paid: str, reserve: str, status: str) -> dict[str, str]:
+    return {
+        "claim_id": claim_id,
+        "policy_id": policy_id,
+        "loss_date": loss_date,
+        "reported_date": loss_date,
+        "paid_amount": paid,
+        "reserve_amount": reserve,
+        "currency": "DKK",
+        "status": status,
     }
