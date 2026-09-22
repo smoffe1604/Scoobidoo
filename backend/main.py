@@ -194,6 +194,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
         @app.get("/")
+        @app.get("/kildedata")
         def index() -> FileResponse:
             return FileResponse(dist / "index.html")
 

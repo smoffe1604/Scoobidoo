@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DataBrowser from "./DataBrowser";
 import { danishLabel } from "./labels";
 import RegionMap from "./RegionMap";
@@ -55,7 +55,10 @@ export default function App() {
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [experience, setExperience] = useState<Experience | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"experience" | "data">("experience");
+  const path = usePath();
+  const onData = path === "/kildedata" || path === "/kildedata/";
+  const detailRef = useRef<HTMLElement>(null);
+  const scrollDetail = useRef(false);
 
   useEffect(() => {
     Promise.all([getJson<Meta>("/meta"), getJson<Quality>("/data-quality")])
@@ -72,21 +75,18 @@ export default function App() {
     if (filters.region) params.set("region", filters.region);
     if (filters.assetType) params.set("asset_type", filters.assetType);
     const query = params.toString();
-    const path = filters.portfolioId
-      ? `/portfolios/${filters.portfolioId}/loss-experience`
-      : "/portfolios/loss-experience";
+    const suffix = query ? `?${query}` : "";
     let cancelled = false;
-    getJson<Comparison & Experience>(query ? `${path}?${query}` : path)
-      .then((body) => {
+    const comparisonRequest = getJson<Comparison>(`/portfolios/loss-experience${suffix}`);
+    const experienceRequest = filters.portfolioId
+      ? getJson<Experience>(`/portfolios/${filters.portfolioId}/loss-experience${suffix}`)
+      : Promise.resolve(null);
+    Promise.all([comparisonRequest, experienceRequest])
+      .then(([nextComparison, nextExperience]) => {
         if (cancelled) return;
         setError(null);
-        if (filters.portfolioId) {
-          setExperience(body);
-          setComparison(null);
-        } else {
-          setComparison(body);
-          setExperience(null);
-        }
+        setComparison(nextComparison);
+        setExperience(nextExperience);
       })
       .catch((reason: Error) => {
         if (!cancelled) setError(reason.message);
@@ -96,28 +96,113 @@ export default function App() {
     };
   }, [filters]);
 
+  useEffect(() => {
+    if (!experience || !scrollDetail.current) return;
+    scrollDetail.current = false;
+    detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [experience]);
+
+  function showAll() {
+    setExperience(null);
+    setFilters({ ...filters, portfolioId: "" });
+  }
+
+  function pickPortfolio(portfolioId: string) {
+    if (filters.portfolioId === portfolioId) {
+      showAll();
+      return;
+    }
+    setExperience(null);
+    setFilters({ ...filters, portfolioId });
+  }
+
+  function pickFromTable(portfolioId: string) {
+    scrollDetail.current = filters.portfolioId !== portfolioId;
+    pickPortfolio(portfolioId);
+  }
+
+  useEffect(() => {
+    document.title = onData ? "Kildedata" : "Skadesforløb";
+  }, [onData]);
+
   return (
     <main className="page">
-      <header>
-        <h1>Skadesforløb</h1>
-        <p>Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med.</p>
-        <nav className="nav">
-          <button type="button" className={view === "experience" ? "on" : undefined} onClick={() => setView("experience")}>
-            Skadesforløb
-          </button>
-          <button type="button" className={view === "data" ? "on" : undefined} onClick={() => setView("data")}>
-            Kildedata
-          </button>
-        </nav>
+      <header className="top">
+        <div className="title-row">
+          {onData && (
+            <a className="icon-button" href="/" aria-label="Tilbage" onClick={(event) => follow(event, "/")}>
+              <BackIcon />
+            </a>
+          )}
+          <div>
+            <h1>{onData ? "Kildedata" : "Skadesforløb"}</h1>
+            <p>
+              {onData
+                ? "De fire filer, tallene er regnet ud fra."
+                : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
+            </p>
+          </div>
+        </div>
+        {!onData && (
+          <a
+            className="icon-button"
+            href="/kildedata"
+            aria-label="Kildedata"
+            onClick={(event) => follow(event, "/kildedata")}
+          >
+            <TableIcon />
+          </a>
+        )}
       </header>
 
-      {view === "data" ? (
+      {onData ? (
         <DataBrowser />
       ) : (
         <>
       {error && <p className="error">{error}</p>}
 
       <section className="panel">
+        <div className="scope">
+          <div className="chips" role="group" aria-label="Portefølje">
+            <button
+              type="button"
+              className={filters.portfolioId ? undefined : "on"}
+              onClick={showAll}
+            >
+              Alle porteføljer
+            </button>
+            {(meta?.portfolios ?? []).map((id) => (
+              <button
+                key={id}
+                type="button"
+                className={filters.portfolioId === id ? "on" : undefined}
+                onClick={() => pickPortfolio(id)}
+              >
+                {id}
+              </button>
+            ))}
+          </div>
+          <div className="filters">
+            <Select
+              label="Tegningsår"
+              value={filters.year}
+              onChange={(year) => setFilters({ ...filters, year })}
+              options={[["", "Alle år"], ...(meta?.underwriting_years ?? []).map((year) => [String(year), String(year)] as [string, string])]}
+            />
+            <Select
+              label="Region"
+              value={filters.region}
+              onChange={(region) => setFilters({ ...filters, region })}
+              options={[["", "Alle regioner"], ...(meta?.regions ?? []).map((region) => [region, region] as [string, string])]}
+            />
+            <Select
+              label="Ejendomstype"
+              value={filters.assetType}
+              onChange={(assetType) => setFilters({ ...filters, assetType })}
+              options={[["", "Alle typer"], ...(meta?.asset_types ?? []).map((kind) => [kind, danishLabel(kind)] as [string, string])]}
+            />
+          </div>
+        </div>
         <RegionMap
           portfolioId={filters.portfolioId}
           year={filters.year}
@@ -125,44 +210,33 @@ export default function App() {
           region={filters.region}
           onSelectRegion={(region) => setFilters({ ...filters, region })}
         />
-        <div className="filters">
-          <Select
-            label="Portefølje"
-            value={filters.portfolioId}
-            onChange={(portfolioId) => setFilters({ ...filters, portfolioId })}
-            options={[["", "Alle porteføljer"], ...(meta?.portfolios ?? []).map((id) => [id, id] as [string, string])]}
-          />
-          <Select
-            label="Tegningsår"
-            value={filters.year}
-            onChange={(year) => setFilters({ ...filters, year })}
-            options={[["", "Alle år"], ...(meta?.underwriting_years ?? []).map((year) => [String(year), String(year)] as [string, string])]}
-          />
-          <Select
-            label="Region"
-            value={filters.region}
-            onChange={(region) => setFilters({ ...filters, region })}
-            options={[["", "Alle regioner"], ...(meta?.regions ?? []).map((region) => [region, region] as [string, string])]}
-          />
-          <Select
-            label="Ejendomstype"
-            value={filters.assetType}
-            onChange={(assetType) => setFilters({ ...filters, assetType })}
-            options={[["", "Alle typer"], ...(meta?.asset_types ?? []).map((kind) => [kind, danishLabel(kind)] as [string, string])]}
-          />
-        </div>
 
         {experience && (
-          <div className="headline">
-            <Figure label="Optjent præmie" value={formatMoney(experience.totals.earned_premium_dkk)} />
-            <Figure label="Skadeudgift" value={formatMoney(experience.totals.incurred_loss_dkk)} />
-            <Figure label="Skadeprocent" value={formatRatio(experience.totals.loss_ratio)} bad={isBad(experience.totals.loss_ratio)} />
-            <Figure label="Skader" value={formatCount(experience.totals.claim_count)} />
-          </div>
+          <section className="portfolio-detail" ref={detailRef}>
+            <div className="detail-head">
+              <h2>{experience.portfolio_id}</h2>
+              <button type="button" className="linkish" onClick={showAll}>
+                Tilbage til alle porteføljer
+              </button>
+            </div>
+            <div className="headline">
+              <Figure label="Optjent præmie" value={formatMoney(experience.totals.earned_premium_dkk)} />
+              <Figure label="Skadeudgift" value={formatMoney(experience.totals.incurred_loss_dkk)} />
+              <Figure label="Skadeprocent" value={formatRatio(experience.totals.loss_ratio)} bad={isBad(experience.totals.loss_ratio)} />
+              <Figure label="Skader" value={formatCount(experience.totals.claim_count)} />
+            </div>
+            <PerilTable rows={experience.perils} />
+          </section>
         )}
 
-        {comparison && <PortfolioTable rows={comparison.portfolios} onPick={(portfolioId) => setFilters({ ...filters, portfolioId })} />}
-        {experience && <PerilTable rows={experience.perils} />}
+        <h2 className="section-label">Alle porteføljer</h2>
+        {comparison && (
+          <PortfolioTable
+            rows={comparison.portfolios}
+            selectedId={filters.portfolioId}
+            onPick={pickFromTable}
+          />
+        )}
       </section>
 
       {quality && (
@@ -181,10 +255,18 @@ export default function App() {
   );
 }
 
-function PortfolioTable({ rows, onPick }: { rows: PortfolioRow[]; onPick: (id: string) => void }) {
+function PortfolioTable({
+  rows,
+  selectedId,
+  onPick,
+}: {
+  rows: PortfolioRow[];
+  selectedId: string;
+  onPick: (id: string) => void;
+}) {
   return (
     <table>
-      <caption>Højeste skadeprocent først. Antallet tæller også afviste og tilbagekaldte skader. De lægger 0 kr. til skadeudgiften.</caption>
+      <caption>Højeste skadeprocent først. Klik på en portefølje for at se farerne. Klik igen for at vise alle.</caption>
       <thead>
         <tr>
           <th>Portefølje</th>
@@ -198,7 +280,7 @@ function PortfolioTable({ rows, onPick }: { rows: PortfolioRow[]; onPick: (id: s
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.portfolio_id}>
+          <tr key={row.portfolio_id} className={row.portfolio_id === selectedId ? "selected" : undefined}>
             <td><button type="button" onClick={() => onPick(row.portfolio_id)}>{row.portfolio_id}</button></td>
             <td>{formatCount(row.policy_count)}</td>
             <td>{formatMoney(row.earned_premium_dkk)}</td>
@@ -231,7 +313,7 @@ function PerilTable({ rows }: { rows: PerilRow[] }) {
       <tbody>
         {rows.map((row) => (
           <tr key={row.peril}>
-            <td>{row.peril}</td>
+            <td>{danishLabel(row.peril)}</td>
             <td>{formatCount(row.policy_count)}</td>
             <td>{formatMoney(row.earned_premium_dkk)}</td>
             <td>{formatMoney(row.incurred_loss_dkk)}</td>
@@ -276,6 +358,40 @@ function Figure({ label, value, bad }: { label: string; value: string; bad?: boo
       <span>{label}</span>
       <strong className={bad ? "bad" : undefined}>{value}</strong>
     </div>
+  );
+}
+
+function usePath(): string {
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const sync = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  return path;
+}
+
+function follow(event: { preventDefault: () => void; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }, path: string) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  window.history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function TableIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <rect x="1.25" y="1.25" width="15.5" height="15.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M1.25 6.5h15.5M1.25 11.5h15.5M6.75 6.5V16.75" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M11.5 3.5 6 9l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

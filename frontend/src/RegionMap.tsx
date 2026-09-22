@@ -151,7 +151,9 @@ export default function RegionMap({
         <span className="swatch low" /> lav
         <span className="swatch mid" />
         <span className="swatch high" /> høj
-        <span>Farven er skadeprocenten. Klik på en region for at filtrere.</span>
+        <span>
+          Farven er skadeprocenten for {portfolioId || "alle porteføljer"}. Klik på en region for at filtrere.
+        </span>
       </p>
     </div>
   );

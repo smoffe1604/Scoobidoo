@@ -40,6 +40,62 @@ td button {
 
 .nav { margin-top: 16px; }
 
+.scope {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f7f5f0;
+  border-bottom: 1px solid #ddd6c8;
+  border-radius: 8px 8px 0 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 16px 0;
+}
+
+.chips button, .linkish {
+  background: transparent;
+  border: 1px solid #ddd6c8;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.chips button.on {
+  background: #1f1c16;
+  color: #f7f5f0;
+}
+
+.linkish { color: #1f4d7a; }
+
+.portfolio-detail { scroll-margin-top: 180px; }
+
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+
+.detail-head h2, .section-label {
+  margin: 0;
+  font-family: Georgia, "Palatino Linotype", serif;
+  font-weight: 500;
+}
+
+.detail-head h2 { font-size: 22px; }
+
+.section-label {
+  padding: 18px 16px 0;
+  font-size: 18px;
+}
+
+tr.selected td { background: #efe6d4; }
+
 .region-map { height: 440px; }
 
 .map-caption {
@@ -119,6 +175,37 @@ tr.missing td { background: #f8e8e4; }
 }
 
 .pager button:disabled { opacity: 0.4; cursor: default; }
+
+header.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+a.icon-button {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ddd6c8;
+  border-radius: 50%;
+  background: #f7f5f0;
+  color: #1f1c16;
+  text-decoration: none;
+}
+
+a.icon-button:hover {
+  background: #1f1c16;
+  color: #f7f5f0;
+}
 
 header h1 {
   margin: 0;
