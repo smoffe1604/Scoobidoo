@@ -114,18 +114,17 @@ export default function App() {
       showAll();
       return;
     }
+    scrollDetail.current = true;
     setExperience(null);
     setFilters({ ...filters, portfolioId });
-  }
-
-  function pickFromTable(portfolioId: string) {
-    scrollDetail.current = filters.portfolioId !== portfolioId;
-    pickPortfolio(portfolioId);
   }
 
   useEffect(() => {
     document.title = onTask ? "Opgave" : onData ? "Kildedata" : "Skadesforløb";
   }, [onData, onTask]);
+
+  const book = comparison ? sumBook(comparison.portfolios) : null;
+  const portfolioChoices = comparison?.portfolios ?? meta?.portfolios.map((id) => ({ portfolio_id: id, loss_ratio: null as number | null })) ?? [];
 
   return (
     <main className="page">
@@ -187,16 +186,20 @@ export default function App() {
               className={filters.portfolioId ? undefined : "on"}
               onClick={showAll}
             >
-              Alle porteføljer
+              <span className="chip-id">Alle</span>
+              <span className={isBad(book?.loss_ratio ?? null) ? "chip-ratio bad" : "chip-ratio"}>
+                {formatRatio(book?.loss_ratio ?? null)}
+              </span>
             </button>
-            {(meta?.portfolios ?? []).map((id) => (
+            {portfolioChoices.map((row) => (
               <button
-                key={id}
+                key={row.portfolio_id}
                 type="button"
-                className={filters.portfolioId === id ? "on" : undefined}
-                onClick={() => pickPortfolio(id)}
+                className={filters.portfolioId === row.portfolio_id ? "on" : undefined}
+                onClick={() => pickPortfolio(row.portfolio_id)}
               >
-                {id}
+                <span className="chip-id">{row.portfolio_id}</span>
+                <span className={isBad(row.loss_ratio) ? "chip-ratio bad" : "chip-ratio"}>{formatRatio(row.loss_ratio)}</span>
               </button>
             ))}
           </div>
@@ -229,7 +232,7 @@ export default function App() {
           onSelectRegion={(region) => setFilters({ ...filters, region })}
         />
 
-        {experience && (
+        {experience ? (
           <section className="portfolio-detail" ref={detailRef}>
             <div className="detail-head">
               <h2>{experience.portfolio_id}</h2>
@@ -245,15 +248,18 @@ export default function App() {
             </div>
             <PerilTable rows={experience.perils} />
           </section>
-        )}
-
-        <h2 className="section-label">Alle porteføljer</h2>
-        {comparison && (
-          <PortfolioTable
-            rows={comparison.portfolios}
-            selectedId={filters.portfolioId}
-            onPick={pickFromTable}
-          />
+        ) : book && (
+          <section className="portfolio-detail">
+            <div className="detail-head">
+              <h2>Alle porteføljer</h2>
+            </div>
+            <div className="headline">
+              <Figure label="Optjent præmie" value={formatMoney(book.earned_premium_dkk)} />
+              <Figure label="Skadeudgift" value={formatMoney(book.incurred_loss_dkk)} />
+              <Figure label="Skadeprocent" value={formatRatio(book.loss_ratio)} bad={isBad(book.loss_ratio)} />
+              <Figure label="Skader" value={formatCount(book.claim_count)} />
+            </div>
+          </section>
         )}
       </section>
 
@@ -273,44 +279,21 @@ export default function App() {
   );
 }
 
-function PortfolioTable({
-  rows,
-  selectedId,
-  onPick,
-}: {
-  rows: PortfolioRow[];
-  selectedId: string;
-  onPick: (id: string) => void;
-}) {
-  return (
-    <table>
-      <caption>Højeste skadeprocent først. Klik på en portefølje for at se farerne. Klik igen for at vise alle.</caption>
-      <thead>
-        <tr>
-          <th>Portefølje</th>
-          <th>Policer</th>
-          <th>Optjent præmie</th>
-          <th>Skadeudgift</th>
-          <th>Skadeprocent</th>
-          <th>Skader</th>
-          <th>Største skade</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.portfolio_id} className={row.portfolio_id === selectedId ? "selected" : undefined}>
-            <td><button type="button" onClick={() => onPick(row.portfolio_id)}>{row.portfolio_id}</button></td>
-            <td>{formatCount(row.policy_count)}</td>
-            <td>{formatMoney(row.earned_premium_dkk)}</td>
-            <td>{formatMoney(row.incurred_loss_dkk)}</td>
-            <td className={isBad(row.loss_ratio) ? "bad" : undefined}>{formatRatio(row.loss_ratio)}</td>
-            <td>{formatCount(row.claim_count)}</td>
-            <td>{formatMoney(row.largest_claim_dkk)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+function sumBook(rows: PortfolioRow[]): Bucket {
+  const earned = rows.reduce((sum, row) => sum + row.earned_premium_dkk, 0);
+  const incurred = rows.reduce((sum, row) => sum + row.incurred_loss_dkk, 0);
+  const largest = rows.reduce<number | null>((best, row) => {
+    if (row.largest_claim_dkk === null) return best;
+    return best === null ? row.largest_claim_dkk : Math.max(best, row.largest_claim_dkk);
+  }, null);
+  return {
+    policy_count: rows.reduce((sum, row) => sum + row.policy_count, 0),
+    earned_premium_dkk: earned,
+    incurred_loss_dkk: incurred,
+    loss_ratio: earned === 0 ? null : incurred / earned,
+    claim_count: rows.reduce((sum, row) => sum + row.claim_count, 0),
+    largest_claim_dkk: largest,
+  };
 }
 
 function PerilTable({ rows }: { rows: PerilRow[] }) {
