@@ -195,6 +195,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
         @app.get("/")
         @app.get("/kildedata")
+        @app.get("/opgavebeskrivelser")
         def index() -> FileResponse:
             return FileResponse(dist / "index.html")
 

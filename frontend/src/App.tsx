@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import DataBrowser from "./DataBrowser";
 import { danishLabel } from "./labels";
 import RegionMap from "./RegionMap";
+import TaskBrief from "./TaskBrief";
 
 type Filters = {
   portfolioId: string;
@@ -57,8 +58,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const path = usePath();
   const onData = path === "/kildedata" || path === "/kildedata/";
-  const detailRef = useRef<HTMLElement>(null);
-  const scrollDetail = useRef(false);
+  const onTask = path === "/opgavebeskrivelser" || path === "/opgavebeskrivelser/";
+  const detailRef = useRef<HTMLDivElement>(null);
+  const detailHeight = useRef(0);
 
   useEffect(() => {
     Promise.all([getJson<Meta>("/meta"), getJson<Quality>("/data-quality")])
@@ -96,11 +98,19 @@ export default function App() {
     };
   }, [filters]);
 
-  useEffect(() => {
-    if (!experience || !scrollDetail.current) return;
-    scrollDetail.current = false;
-    detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [experience]);
+  useLayoutEffect(() => {
+    const node = detailRef.current;
+    if (!node) {
+      detailHeight.current = 0;
+      return;
+    }
+    const next = node.offsetHeight;
+    const delta = next - detailHeight.current;
+    const pin = document.querySelector(".scope")?.getBoundingClientRect().bottom ?? 0;
+    const previousBottom = node.getBoundingClientRect().bottom - delta;
+    if (delta !== 0 && previousBottom <= pin + 24) window.scrollBy(0, delta);
+    detailHeight.current = next;
+  });
 
   function showAll() {
     setExperience(null);
@@ -112,14 +122,13 @@ export default function App() {
       showAll();
       return;
     }
-    scrollDetail.current = true;
     setExperience(null);
     setFilters({ ...filters, portfolioId });
   }
 
   useEffect(() => {
-    document.title = onData ? "Kildedata" : "Skadesforløb";
-  }, [onData]);
+    document.title = onTask ? "Opgavebeskrivelser" : onData ? "Kildedata" : "Skadesforløb";
+  }, [onData, onTask]);
 
   const book = comparison ? sumBook(comparison.portfolios) : null;
   const portfolioChoices = comparison?.portfolios ?? meta?.portfolios.map((id) => ({ portfolio_id: id, loss_ratio: null as number | null })) ?? [];
@@ -128,23 +137,27 @@ export default function App() {
     <main className="page">
       <header className="top">
         <div className="title-row">
-          {onData && (
+          {(onData || onTask) && (
             <a className="icon-button" href="/" aria-label="Tilbage" onClick={(event) => follow(event, "/")}>
               <BackIcon />
             </a>
           )}
           <div>
-            <h1>{onData ? "Kildedata" : "Skadesforløb"}</h1>
+            <h1>{onTask ? "Opgavebeskrivelser" : onData ? "Kildedata" : "Skadesforløb"}</h1>
             <p>
-              {onData
-                ? "De fire filer, tallene er regnet ud fra."
-                : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
+              {onTask
+                ? "Briefet og hvordan opgaven bliver vurderet."
+                : onData
+                  ? "De fire filer, tallene er regnet ud fra."
+                  : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
             </p>
           </div>
         </div>
+      </header>
+      <nav className="corner-nav" aria-label="Andre sider">
         {!onData && (
           <a
-            className="icon-button corner"
+            className="icon-button"
             href="/kildedata"
             aria-label="Kildedata"
             onClick={(event) => follow(event, "/kildedata")}
@@ -152,9 +165,20 @@ export default function App() {
             <TableIcon />
           </a>
         )}
-      </header>
+        {!onTask && (
+          <a
+            className="corner-label"
+            href="/opgavebeskrivelser"
+            onClick={(event) => follow(event, "/opgavebeskrivelser")}
+          >
+            Opgavebeskrivelser
+          </a>
+        )}
+      </nav>
 
-      {onData ? (
+      {onTask ? (
+        <TaskBrief />
+      ) : onData ? (
         <DataBrowser />
       ) : (
         <>
@@ -206,16 +230,10 @@ export default function App() {
             />
           </div>
         </div>
-        <RegionMap
-          portfolioId={filters.portfolioId}
-          year={filters.year}
-          assetType={filters.assetType}
-          region={filters.region}
-          onSelectRegion={(region) => setFilters({ ...filters, region })}
-        />
 
+        <div ref={detailRef}>
         {experience ? (
-          <section className="portfolio-detail" ref={detailRef}>
+          <section className="portfolio-detail">
             <div className="detail-head">
               <h2>{experience.portfolio_id}</h2>
               <button type="button" className="linkish" onClick={showAll}>
@@ -243,6 +261,15 @@ export default function App() {
             </div>
           </section>
         )}
+        </div>
+
+        <RegionMap
+          portfolioId={filters.portfolioId}
+          year={filters.year}
+          assetType={filters.assetType}
+          region={filters.region}
+          onSelectRegion={(region) => setFilters({ ...filters, region })}
+        />
       </section>
 
       {quality && (
