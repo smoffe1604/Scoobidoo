@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = {
   open: "åben",
   withdrawn: "trukket tilbage",
   declined: "afvist",
+  Sjaelland: "Sjælland",
 };
 
 export function danishLabel(value: string): string {

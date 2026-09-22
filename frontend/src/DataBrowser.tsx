@@ -155,7 +155,7 @@ export default function DataBrowser() {
         ))}
       </div>
 
-      <div className="table-scroll">
+      <div className="table-scroll data-table">
         <table>
           <thead>
             <tr>

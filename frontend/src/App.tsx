@@ -1,8 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import DataBrowser from "./DataBrowser";
 import { danishLabel } from "./labels";
 import RegionMap from "./RegionMap";
-import TaskBrief from "./TaskBrief";
 
 type Filters = {
   portfolioId: string;
@@ -30,7 +29,7 @@ type Meta = {
   underwriting_years: number[];
 };
 
-type Comparison = { portfolios: PortfolioRow[] };
+type Comparison = { totals: Bucket; portfolios: PortfolioRow[] };
 type Experience = { portfolio_id: string; totals: Bucket; perils: PerilRow[] };
 type Quality = { notes: string[] };
 
@@ -58,9 +57,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const path = usePath();
   const onData = path === "/kildedata" || path === "/kildedata/";
-  const onTask = path === "/opgavebeskrivelser" || path === "/opgavebeskrivelser/";
-  const detailRef = useRef<HTMLDivElement>(null);
-  const detailHeight = useRef(0);
 
   useEffect(() => {
     Promise.all([getJson<Meta>("/meta"), getJson<Quality>("/data-quality")])
@@ -98,20 +94,6 @@ export default function App() {
     };
   }, [filters]);
 
-  useLayoutEffect(() => {
-    const node = detailRef.current;
-    if (!node) {
-      detailHeight.current = 0;
-      return;
-    }
-    const next = node.offsetHeight;
-    const delta = next - detailHeight.current;
-    const pin = document.querySelector(".scope")?.getBoundingClientRect().bottom ?? 0;
-    const previousBottom = node.getBoundingClientRect().bottom - delta;
-    if (delta !== 0 && previousBottom <= pin + 24) window.scrollBy(0, delta);
-    detailHeight.current = next;
-  });
-
   function showAll() {
     setExperience(null);
     setFilters({ ...filters, portfolioId: "" });
@@ -122,15 +104,14 @@ export default function App() {
       showAll();
       return;
     }
-    setExperience(null);
     setFilters({ ...filters, portfolioId });
   }
 
   useEffect(() => {
-    document.title = onTask ? "Opgavebeskrivelser" : onData ? "Kildedata" : "Skadesforløb";
-  }, [onData, onTask]);
+    document.title = onData ? "Kildedata" : "Skadesforløb";
+  }, [onData]);
 
-  const book = comparison ? sumBook(comparison.portfolios) : null;
+  const book = comparison?.totals ?? null;
   const ratioById = new Map((comparison?.portfolios ?? []).map((row) => [row.portfolio_id, row.loss_ratio]));
   const portfolioIds = [
     ...(meta?.portfolios ?? comparison?.portfolios.map((row) => row.portfolio_id) ?? []),
@@ -139,212 +120,237 @@ export default function App() {
     portfolio_id: id,
     loss_ratio: ratioById.get(id) ?? null,
   }));
+  const filterSummary = describeFilters(filters);
 
   return (
     <main className="page">
       <header className="top">
         <div className="title-row">
-          {(onData || onTask) && (
+          {onData && (
             <a className="icon-button" href="/" aria-label="Tilbage" onClick={(event) => follow(event, "/")}>
               <BackIcon />
             </a>
           )}
           <div>
-            <h1>{onTask ? "Opgavebeskrivelser" : onData ? "Kildedata" : "Skadesforløb"}</h1>
-            <p>
-              {onTask
-                ? "Briefet og hvordan opgaven bliver vurderet."
-                : onData
-                  ? "De fire filer, tallene er regnet ud fra."
-                  : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}
-            </p>
+            <h1>{onData ? "Kildedata" : "Skadesforløb"}</h1>
+            <p>{onData ? "De fire filer, tallene er regnet ud fra." : "Danske ejendomme. Beløb i kroner. Hele årpræmien tæller med."}</p>
           </div>
         </div>
-      </header>
-      <nav className="corner-nav" aria-label="Andre sider">
-        {!onTask && (
-          <a
-            className="corner-label"
-            href="/opgavebeskrivelser"
-            onClick={(event) => follow(event, "/opgavebeskrivelser")}
-          >
-            Opgavebeskrivelser
-          </a>
-        )}
         {!onData && (
-          <a
-            className="icon-button"
-            href="/kildedata"
-            aria-label="Kildedata"
-            onClick={(event) => follow(event, "/kildedata")}
-          >
-            <TableIcon />
-          </a>
+          <nav className="top-nav" aria-label="Andre sider">
+            <a className="icon-button" href="/kildedata" aria-label="Kildedata" onClick={(event) => follow(event, "/kildedata")}>
+              <TableIcon />
+            </a>
+          </nav>
         )}
-      </nav>
+      </header>
 
-      {onTask ? (
-        <TaskBrief />
-      ) : onData ? (
+      {onData ? (
         <DataBrowser />
       ) : (
         <>
-      {error && <p className="error">{error}</p>}
+          {error && <p className="error">{error}</p>}
 
-      <div className="dashboard">
-      <nav className="toc" aria-label="Portefølje">
-        <button
-          type="button"
-          className={filters.portfolioId ? undefined : "on"}
-          onClick={showAll}
-        >
-          <span className="chip-id">Alle</span>
-          <span className={isBad(book?.loss_ratio ?? null) ? "chip-ratio bad" : "chip-ratio"}>
-            {formatRatio(book?.loss_ratio ?? null)}
-          </span>
-        </button>
-        {portfolioChoices.map((row) => (
-          <button
-            key={row.portfolio_id}
-            type="button"
-            className={filters.portfolioId === row.portfolio_id ? "on" : undefined}
-            onClick={() => pickPortfolio(row.portfolio_id)}
-          >
-            <span className="chip-id">{row.portfolio_id}</span>
-            <span className={isBad(row.loss_ratio) ? "chip-ratio bad" : "chip-ratio"}>{formatRatio(row.loss_ratio)}</span>
-          </button>
-        ))}
-      </nav>
-      <div className="dashboard-main">
-      <section className="panel">
-        <div className="scope">
-          <div className="filters">
-            <Select
-              label="Tegningsår"
-              value={filters.year}
-              onChange={(year) => setFilters({ ...filters, year })}
-              options={[["", "Alle år"], ...(meta?.underwriting_years ?? []).map((year) => [String(year), String(year)] as [string, string])]}
-            />
-            <Select
-              label="Region"
-              value={filters.region}
-              onChange={(region) => setFilters({ ...filters, region })}
-              options={[["", "Alle regioner"], ...(meta?.regions ?? []).map((region) => [region, region] as [string, string])]}
-            />
-            <Select
-              label="Ejendomstype"
-              value={filters.assetType}
-              onChange={(assetType) => setFilters({ ...filters, assetType })}
-              options={[["", "Alle typer"], ...(meta?.asset_types ?? []).map((kind) => [kind, danishLabel(kind)] as [string, string])]}
-            />
-          </div>
-        </div>
-
-        <div ref={detailRef}>
-        {experience ? (
-          <section className="portfolio-detail">
-            <div className="detail-head">
-              <h2>{experience.portfolio_id}</h2>
-              <button type="button" className="linkish" onClick={showAll}>
-                Tilbage til alle porteføljer
+          <div className="dashboard">
+            <nav className="toc" aria-label="Portefølje">
+              <button type="button" className={filters.portfolioId ? undefined : "on"} onClick={showAll}>
+                <span className="chip-id">Alle</span>
+                <span className={isBad(book?.loss_ratio ?? null) ? "chip-ratio bad" : "chip-ratio"}>
+                  {formatRatio(book?.loss_ratio ?? null)}
+                </span>
               </button>
-            </div>
-            <div className="headline">
-              <Figure label="Optjent præmie" value={formatMoney(experience.totals.earned_premium_dkk)} />
-              <Figure label="Skadeudgift" value={formatMoney(experience.totals.incurred_loss_dkk)} />
-              <Figure label="Skadeprocent" value={formatRatio(experience.totals.loss_ratio)} bad={isBad(experience.totals.loss_ratio)} />
-              <Figure label="Skader" value={formatCount(experience.totals.claim_count)} />
-            </div>
-            <PerilTable rows={experience.perils} />
-          </section>
-        ) : book && (
-          <section className="portfolio-detail">
-            <div className="detail-head">
-              <h2>Alle porteføljer</h2>
-            </div>
-            <div className="headline">
-              <Figure label="Optjent præmie" value={formatMoney(book.earned_premium_dkk)} />
-              <Figure label="Skadeudgift" value={formatMoney(book.incurred_loss_dkk)} />
-              <Figure label="Skadeprocent" value={formatRatio(book.loss_ratio)} bad={isBad(book.loss_ratio)} />
-              <Figure label="Skader" value={formatCount(book.claim_count)} />
-            </div>
-          </section>
-        )}
-        </div>
+              {portfolioChoices.map((row) => (
+                <button
+                  key={row.portfolio_id}
+                  type="button"
+                  className={filters.portfolioId === row.portfolio_id ? "on" : undefined}
+                  onClick={() => pickPortfolio(row.portfolio_id)}
+                >
+                  <span className="chip-id">{row.portfolio_id}</span>
+                  <span className={isBad(row.loss_ratio) ? "chip-ratio bad" : "chip-ratio"}>{formatRatio(row.loss_ratio)}</span>
+                </button>
+              ))}
+            </nav>
+            <div className="dashboard-main">
+              <section className="panel">
+                <div className="scope">
+                  <div className="filters">
+                    <Select
+                      label="Tegningsår"
+                      value={filters.year}
+                      onChange={(year) => setFilters({ ...filters, year })}
+                      options={[["", "Alle år"], ...(meta?.underwriting_years ?? []).map((year) => [String(year), String(year)] as [string, string])]}
+                    />
+                    <Select
+                      label="Region"
+                      value={filters.region}
+                      onChange={(region) => setFilters({ ...filters, region })}
+                      options={[["", "Alle regioner"], ...(meta?.regions ?? []).map((region) => [region, danishLabel(region)] as [string, string])]}
+                    />
+                    <Select
+                      label="Ejendomstype"
+                      value={filters.assetType}
+                      onChange={(assetType) => setFilters({ ...filters, assetType })}
+                      options={[["", "Alle typer"], ...(meta?.asset_types ?? []).map((kind) => [kind, danishLabel(kind)] as [string, string])]}
+                    />
+                  </div>
+                </div>
 
-        <RegionMap
-          portfolioId={filters.portfolioId}
-          year={filters.year}
-          assetType={filters.assetType}
-          region={filters.region}
-          onSelectRegion={(region) => setFilters({ ...filters, region })}
-        />
-      </section>
+                {experience ? (
+                  <section className="portfolio-detail">
+                    <div className="detail-head">
+                      <h2>
+                        {experience.portfolio_id}
+                        {filterSummary && <small>{filterSummary}</small>}
+                      </h2>
+                      <button type="button" className="linkish" onClick={showAll}>
+                        Tilbage til alle porteføljer
+                      </button>
+                    </div>
+                    <Headline totals={experience.totals} />
+                    {experience.perils.length ? (
+                      <PerilTable rows={experience.perils} />
+                    ) : (
+                      <p className="empty">Ingen policer i dette udsnit.</p>
+                    )}
+                  </section>
+                ) : (
+                  comparison && (
+                    <section className="portfolio-detail">
+                      <div className="detail-head">
+                        <h2>
+                          Alle porteføljer
+                          {filterSummary && <small>{filterSummary}</small>}
+                        </h2>
+                      </div>
+                      <Headline totals={comparison.totals} />
+                      {comparison.portfolios.length ? (
+                        <PortfolioTable rows={comparison.portfolios} onPick={pickPortfolio} />
+                      ) : (
+                        <p className="empty">Ingen policer i dette udsnit.</p>
+                      )}
+                    </section>
+                  )
+                )}
 
-      {quality && (
-        <details className="panel quality" open>
-          <summary>Datakvalitet</summary>
-          <ul>
-            {quality.notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-      </div>
-      </div>
+                <RegionMap
+                  portfolioId={filters.portfolioId}
+                  year={filters.year}
+                  assetType={filters.assetType}
+                  region={filters.region}
+                  onSelectRegion={(region) => setFilters({ ...filters, region })}
+                />
+              </section>
+
+              {quality && (
+                <details className="panel quality" open>
+                  <summary>Datakvalitet</summary>
+                  <ul>
+                    {quality.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          </div>
         </>
       )}
     </main>
   );
 }
 
-function sumBook(rows: PortfolioRow[]): Bucket {
-  const earned = rows.reduce((sum, row) => sum + row.earned_premium_dkk, 0);
-  const incurred = rows.reduce((sum, row) => sum + row.incurred_loss_dkk, 0);
-  const largest = rows.reduce<number | null>((best, row) => {
-    if (row.largest_claim_dkk === null) return best;
-    return best === null ? row.largest_claim_dkk : Math.max(best, row.largest_claim_dkk);
-  }, null);
-  return {
-    policy_count: rows.reduce((sum, row) => sum + row.policy_count, 0),
-    earned_premium_dkk: earned,
-    incurred_loss_dkk: incurred,
-    loss_ratio: earned === 0 ? null : incurred / earned,
-    claim_count: rows.reduce((sum, row) => sum + row.claim_count, 0),
-    largest_claim_dkk: largest,
-  };
+function describeFilters(filters: Filters): string {
+  const parts = [
+    filters.year ? `tegningsår ${filters.year}` : "",
+    filters.region ? danishLabel(filters.region) : "",
+    filters.assetType ? danishLabel(filters.assetType) : "",
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function Headline({ totals }: { totals: Bucket }) {
+  return (
+    <div className="headline">
+      <Figure label="Policer" value={formatCount(totals.policy_count)} />
+      <Figure label="Optjent præmie" value={formatMoney(totals.earned_premium_dkk)} />
+      <Figure label="Skadeudgift" value={formatMoney(totals.incurred_loss_dkk)} />
+      <Figure label="Skadeprocent" value={formatRatio(totals.loss_ratio)} bad={isBad(totals.loss_ratio)} />
+      <Figure label="Skader" value={formatCount(totals.claim_count)} />
+      <Figure label="Største skade" value={formatMoney(totals.largest_claim_dkk)} />
+    </div>
+  );
+}
+
+function PortfolioTable({ rows, onPick }: { rows: PortfolioRow[]; onPick: (portfolioId: string) => void }) {
+  return (
+    <div className="table-scroll">
+      <table>
+        <caption>Højeste skadeprocent først. Klik på en portefølje for at se den fordelt på fare.</caption>
+        <thead>
+          <tr>
+            <th>Portefølje</th>
+            <th>Policer</th>
+            <th>Optjent præmie</th>
+            <th>Skadeudgift</th>
+            <th>Skadeprocent</th>
+            <th>Skader</th>
+            <th>Største skade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.portfolio_id}>
+              <td>
+                <button type="button" onClick={() => onPick(row.portfolio_id)}>
+                  {row.portfolio_id}
+                </button>
+              </td>
+              <td>{formatCount(row.policy_count)}</td>
+              <td>{formatMoney(row.earned_premium_dkk)}</td>
+              <td>{formatMoney(row.incurred_loss_dkk)}</td>
+              <td className={isBad(row.loss_ratio) ? "bad" : undefined}>{formatRatio(row.loss_ratio)}</td>
+              <td>{formatCount(row.claim_count)}</td>
+              <td>{formatMoney(row.largest_claim_dkk)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function PerilTable({ rows }: { rows: PerilRow[] }) {
   return (
-    <table>
-      <caption>Højeste skadeprocent først. Antallet tæller også afviste og tilbagekaldte skader. De lægger 0 kr. til skadeudgiften.</caption>
-      <thead>
-        <tr>
-          <th>Fare</th>
-          <th>Policer</th>
-          <th>Optjent præmie</th>
-          <th>Skadeudgift</th>
-          <th>Skadeprocent</th>
-          <th>Skader</th>
-          <th>Største skade</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.peril}>
-            <td>{danishLabel(row.peril)}</td>
-            <td>{formatCount(row.policy_count)}</td>
-            <td>{formatMoney(row.earned_premium_dkk)}</td>
-            <td>{formatMoney(row.incurred_loss_dkk)}</td>
-            <td className={isBad(row.loss_ratio) ? "bad" : undefined}>{formatRatio(row.loss_ratio)}</td>
-            <td>{formatCount(row.claim_count)}</td>
-            <td>{formatMoney(row.largest_claim_dkk)}</td>
+    <div className="table-scroll">
+      <table>
+        <caption>Højeste skadeprocent først. Antallet tæller også afviste og tilbagekaldte skader. De lægger 0 kr. til skadeudgiften.</caption>
+        <thead>
+          <tr>
+            <th>Fare</th>
+            <th>Policer</th>
+            <th>Optjent præmie</th>
+            <th>Skadeudgift</th>
+            <th>Skadeprocent</th>
+            <th>Skader</th>
+            <th>Største skade</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.peril}>
+              <td>{danishLabel(row.peril)}</td>
+              <td>{formatCount(row.policy_count)}</td>
+              <td>{formatMoney(row.earned_premium_dkk)}</td>
+              <td>{formatMoney(row.incurred_loss_dkk)}</td>
+              <td className={isBad(row.loss_ratio) ? "bad" : undefined}>{formatRatio(row.loss_ratio)}</td>
+              <td>{formatCount(row.claim_count)}</td>
+              <td>{formatMoney(row.largest_claim_dkk)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

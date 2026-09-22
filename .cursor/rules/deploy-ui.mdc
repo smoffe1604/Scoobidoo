@@ -1,0 +1,16 @@
+---
+description: Deploy the site after every UI change
+alwaysApply: true
+---
+
+# Deploy after UI changes
+
+After any change to the frontend UI (layout, styling, routing, or rendered data), ship it before the task is done.
+
+1. Commit the UI change on `main` with a short message about why.
+2. Push to `origin/main`.
+3. Run `./deploy.sh` from the repo root. It syncs `origin/main` to the server and publishes https://scoobidoo.bils.hair.
+4. If the script's final health check returns 502, wait and request `https://scoobidoo.bils.hair/health` again. The app often answers once startup finishes.
+5. Open the changed page on that host and confirm the new behavior.
+
+Do this for every UI change in the conversation, including follow-up tweaks. Do not wait to be asked.
