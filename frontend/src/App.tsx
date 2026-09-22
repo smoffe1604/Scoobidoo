@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import DataBrowser from "./DataBrowser";
 
 type Filters = {
   portfolioId: string;
@@ -52,6 +53,7 @@ export default function App() {
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [experience, setExperience] = useState<Experience | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"experience" | "data">("experience");
 
   useEffect(() => {
     Promise.all([getJson<Meta>("/meta"), getJson<Quality>("/data-quality")])
@@ -97,8 +99,20 @@ export default function App() {
       <header>
         <h1>Loss experience</h1>
         <p>Danish property book. Figures in DKK. Full annual premium, no pro-rata.</p>
+        <nav className="nav">
+          <button type="button" className={view === "experience" ? "on" : undefined} onClick={() => setView("experience")}>
+            Loss experience
+          </button>
+          <button type="button" className={view === "data" ? "on" : undefined} onClick={() => setView("data")}>
+            Source tables
+          </button>
+        </nav>
       </header>
 
+      {view === "data" ? (
+        <DataBrowser />
+      ) : (
+        <>
       {error && <p className="error">{error}</p>}
 
       <section className="panel">
@@ -151,6 +165,8 @@ export default function App() {
             ))}
           </ul>
         </details>
+      )}
+        </>
       )}
     </main>
   );

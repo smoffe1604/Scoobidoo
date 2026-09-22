@@ -7,12 +7,13 @@ from contextlib import asynccontextmanager
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from loss import Book, Bucket, compare_portfolios, experience_for_portfolio, load_book
+from tables import catalog, load_tables, query_table
 
 MONEY = Decimal("0.01")
 RATIO = Decimal("0.000001")
@@ -32,6 +33,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         book = load_book(source)
         app.state.book = book
+        app.state.tables = load_tables(source)
         quality = book.quality
         print(
             f"Loaded {quality.policies_included} policies and {quality.claims_included} claims. "
@@ -156,6 +158,35 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             "totals": _json_bucket(totals),
             "perils": [{"peril": peril, **_json_bucket(bucket)} for peril, bucket in perils],
         }
+
+    @app.get("/tables")
+    def list_tables() -> dict[str, object]:
+        return {"tables": catalog(app.state.tables)}
+
+    @app.get("/tables/{name}")
+    def one_table(
+        name: str,
+        request: Request,
+        q: str = "",
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=40, ge=1, le=200),
+    ) -> dict[str, object]:
+        filters = {
+            key: request.query_params[key]
+            for key in request.query_params
+            if key not in {"q", "offset", "limit"} and request.query_params[key]
+        }
+        found = query_table(
+            app.state.tables,
+            name,
+            q=q,
+            filters=filters,
+            offset=offset,
+            limit=limit,
+        )
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"Unknown table '{name}'.")
+        return found
 
     dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
     assets = dist / "assets"

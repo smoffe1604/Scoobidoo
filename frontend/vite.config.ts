@@ -10,6 +10,7 @@ export default defineConfig({
       "/data-quality": "http://127.0.0.1:8010",
       "/meta": "http://127.0.0.1:8010",
       "/health": "http://127.0.0.1:8010",
+      "/tables": "http://127.0.0.1:8010",
     },
   },
 });
