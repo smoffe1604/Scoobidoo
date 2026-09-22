@@ -202,12 +202,6 @@ header.top {
   gap: 16px;
 }
 
-.header-actions {
-  display: flex;
-  gap: 8px;
-  flex: none;
-}
-
 .title-row {
   display: flex;
   align-items: flex-start;

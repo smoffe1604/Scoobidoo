@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import brief from "./content/BRIEF.md?raw";
+import scoring from "./content/SCORING.md?raw";
 import { danishLabel } from "./labels";
 
 type TableInfo = { name: string; label: string; blurb: string; count: number };
@@ -18,6 +22,15 @@ type Page = {
 };
 
 const count = new Intl.NumberFormat("da-DK");
+
+const docs = [
+  { name: "brief", label: "Brief", source: brief },
+  { name: "scoring", label: "Scoring", source: scoring },
+] as const;
+
+function isDoc(name: string): boolean {
+  return docs.some((doc) => doc.name === name);
+}
 
 type Remembered = {
   draft: string;
@@ -62,6 +75,11 @@ export default function DataBrowser() {
   }, [name, query.draft]);
 
   useEffect(() => {
+    if (isDoc(name)) {
+      setPage(null);
+      setError(null);
+      return;
+    }
     const params = new URLSearchParams();
     if (query.q) params.set("q", query.q);
     params.set("offset", String(query.offset));
@@ -116,11 +134,28 @@ export default function DataBrowser() {
             <span>{count.format(table.count)}</span>
           </button>
         ))}
+        {docs.map((doc) => (
+          <button
+            key={doc.name}
+            type="button"
+            className={doc.name === name ? "on" : undefined}
+            onClick={() => chooseTable(doc.name)}
+          >
+            {doc.label}
+          </button>
+        ))}
       </div>
+
+      {isDoc(name) && (
+        <article className="brief">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{docs.find((doc) => doc.name === name)?.source ?? ""}</ReactMarkdown>
+        </article>
+      )}
 
       {page && <p className="blurb">{page.blurb}</p>}
       {error && <p className="error">{error}</p>}
 
+      {!isDoc(name) && <>
       <div className="filters">
         <label>
           Søg
@@ -193,6 +228,7 @@ export default function DataBrowser() {
           </button>
         </span>
       </div>
+      </>}
     </section>
   );
 }
