@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from loss import (
@@ -215,12 +215,18 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
         @app.get("/")
-        @app.get("/kildedata")
-        @app.get("/opgavebeskrivelser")
+        @app.get("/envira")
+        @app.get("/envira/kildedata")
+        @app.get("/envira/opgavebeskrivelser")
         @app.get("/sydbank")
         @app.get("/sydbank_sovs")
         def index() -> FileResponse:
             return FileResponse(dist / "index.html")
+
+        @app.get("/kildedata")
+        @app.get("/opgavebeskrivelser")
+        def moved(request: Request) -> RedirectResponse:
+            return RedirectResponse(f"/envira{request.url.path}", status_code=301)
 
         for name in ("regions.geojson", "countries.geojson"):
             outline = dist / name

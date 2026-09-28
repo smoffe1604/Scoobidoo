@@ -34,6 +34,8 @@ type Comparison = { totals: Bucket; portfolios: PortfolioRow[] };
 type Experience = { portfolio_id: string; totals: Bucket; perils: PerilRow[] };
 type Quality = { notes: string[] };
 
+const BASE = "/envira";
+
 const money = new Intl.NumberFormat("da-DK", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -57,8 +59,8 @@ export default function App() {
   const [experience, setExperience] = useState<Experience | null>(null);
   const [error, setError] = useState<string | null>(null);
   const path = usePath();
-  const onData = path === "/kildedata" || path === "/kildedata/";
-  const onTask = path === "/opgavebeskrivelser" || path === "/opgavebeskrivelser/";
+  const onData = path.replace(/\/$/, "") === `${BASE}/kildedata`;
+  const onTask = path.replace(/\/$/, "") === `${BASE}/opgavebeskrivelser`;
 
   useEffect(() => {
     Promise.all([getJson<Meta>("/meta"), getJson<Quality>("/data-quality")])
@@ -129,7 +131,7 @@ export default function App() {
       <header className="top">
         <div className="title-row">
           {(onData || onTask) && (
-            <a className="icon-button" href="/" aria-label="Tilbage" onClick={(event) => follow(event, "/")}>
+            <a className="icon-button" href={BASE} aria-label="Tilbage" onClick={(event) => follow(event, BASE)}>
               <BackIcon />
             </a>
           )}
@@ -146,14 +148,19 @@ export default function App() {
         </div>
       </header>
       <nav className="corner-nav" aria-label="Andre sider">
-        <a className={onData ? "on" : undefined} href="/kildedata" aria-label="Kildedata" onClick={(event) => follow(event, "/kildedata")}>
+        <a
+          className={onData ? "on" : undefined}
+          href={`${BASE}/kildedata`}
+          aria-label="Kildedata"
+          onClick={(event) => follow(event, `${BASE}/kildedata`)}
+        >
           <TableIcon />
         </a>
         <a
           className={onTask ? "on" : undefined}
-          href="/opgavebeskrivelser"
+          href={`${BASE}/opgavebeskrivelser`}
           aria-label="Opgavebeskrivelser"
-          onClick={(event) => follow(event, "/opgavebeskrivelser")}
+          onClick={(event) => follow(event, `${BASE}/opgavebeskrivelser`)}
         >
           <BriefIcon />
         </a>
