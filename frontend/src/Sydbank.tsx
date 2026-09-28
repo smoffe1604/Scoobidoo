@@ -194,7 +194,7 @@ const RING = "M 300 70 A 150 150 0 1 1 299.9 70";
 const NODES = [
   { x: 300, y: 70, t: "Kilder", s: "" },
   { x: 450, y: 220, t: "LLM Wiki", s: "+ lint" },
-  { x: 300, y: 370, t: "Konflikter", s: "" },
+  { x: 300, y: 370, t: "Konflikter", s: "de få" },
   { x: 150, y: 220, t: "Fagperson", s: "afgør" },
 ];
 
@@ -234,30 +234,25 @@ function LoopSlide() {
               Supportassistent
             </text>
             <text x={300} y={238} textAnchor="middle" className="cd-svg-label">
-              svar med kilde
+              læser det rene lag
             </text>
           </g>
         </svg>
-        <div className="cd-legend">
-          <div className="cd-legend-item cd-rise" style={d(2.1)}>
-            <span className="cd-dot" />
-            <div>
-              <strong>LLM Wiki + lint</strong>
-              <span>finder modsigelser og huller</span>
+        <div className="cd-rank">
+          <p className="cd-rank-label cd-rise" style={d(2.1)}>
+            Wikien afgør selv efter rangorden
+          </p>
+          {["Nyeste version", "Forretningsgang", "Supportsvar"].map((t, i) => (
+            <div className="cd-rank-step cd-rise" style={{ ...d(2.3 + i * 0.2), marginLeft: `${i * 28}px` }} key={t}>
+              <span className="cd-rank-n">{i + 1}</span>
+              {t}
             </div>
-          </div>
-          <div className="cd-legend-item cd-rise" style={d(2.3)}>
-            <span className="cd-dot cd-dot-accent" />
-            <div>
-              <strong>Hybrid søgning</strong>
-              <span>svar med afsnit og version</span>
-            </div>
-          </div>
-          <div className="cd-legend-item cd-rise" style={d(2.5)}>
+          ))}
+          <div className="cd-rank-human cd-rise" style={d(3.1)}>
             <span className="cd-dot cd-dot-human" />
             <div>
-              <strong>Mennesket afgør</strong>
-              <span>wikien er vejviser, ikke regelsæt</span>
+              <strong>Kun to gældende regler, der strides</strong>
+              <span>går til fagpersonen</span>
             </div>
           </div>
         </div>
@@ -269,28 +264,34 @@ function LoopSlide() {
 type Scenario = {
   label: string;
   q: string;
-  sources: { ref: string; text: string }[];
-  conflict: boolean;
+  sources: { ref: string; text: string; superseded?: boolean }[];
+  escalate: boolean;
   answer: string;
+  note: string;
 };
 
 const SCENARIOS: Scenario[] = [
   {
-    label: "Uenige kilder",
-    q: "Skal jeg tjekke legitimation, når kunden skal have et nyt kort?",
+    label: "Afgjort af regel",
+    q: "Kan kunden hente det nye kort i filialen?",
     sources: [
-      { ref: "FG-114 §4.1", text: "Uden fornyet legitimation." },
-      { ref: "FG-207 §2.3", text: "Tjek, hvis ældre end 24 mdr." },
+      { ref: "FG-114 §3.2 · 2023", text: "Sendes altid til adressen.", superseded: true },
+      { ref: "FG-114 §3.2 · 2025", text: "Levering eller afhentning i filial." },
     ],
-    conflict: true,
-    answer: "Kilderne er uenige. Sendt til fagansvarlig for kort.",
+    escalate: false,
+    answer: "Ja. Kunden kan vælge afhentning i filial.",
+    note: "Regel: nyeste version gælder",
   },
   {
-    label: "Afklaret",
-    q: "Kan kunden hente det nye kort i filialen?",
-    sources: [{ ref: "FG-114 §3.2 · 2025", text: "Levering eller afhentning i filial." }],
-    conflict: false,
-    answer: "Ja. Notér valget på bestillingen.",
+    label: "Til fagperson",
+    q: "Skal jeg tjekke legitimation, når kunden skal have et nyt kort?",
+    sources: [
+      { ref: "FG-114 §4.1 · gældende", text: "Uden fornyet legitimation." },
+      { ref: "FG-207 §2.3 · gældende", text: "Tjek, hvis ældre end 24 mdr." },
+    ],
+    escalate: true,
+    answer: "To gældende regler er uenige. Afventer fagansvarlig for kort.",
+    note: "Undtagelsen, ikke reglen",
   },
 ];
 
@@ -345,22 +346,34 @@ function DemoSlide() {
             </div>
           )}
           {step >= 4 && (
-            <div className={s.conflict ? "cd-msg cd-msg-a cd-msg-stop cd-in" : "cd-msg cd-msg-a cd-in"}>
-              {s.conflict && <span className="cd-stop">Siger fra</span>}
+            <div className={s.escalate ? "cd-msg cd-msg-a cd-msg-stop cd-in" : "cd-msg cd-msg-a cd-in"}>
+              {s.escalate && <span className="cd-stop">Siger fra</span>}
               {s.answer}
+              {!s.escalate && <span className="cd-cite">FG-114 §3.2 · 2025</span>}
             </div>
           )}
         </div>
         <div className="cd-sources">
-          <p className="cd-sources-label">Kilder</p>
+          <p className="cd-sources-label">Kilder i wikien</p>
           <div className="cd-src-row">
             {s.sources.map((src, i) => (
               <Fragment key={src.ref}>
-                {i > 0 && s.conflict && (
-                  <div className={step >= 3 ? "cd-neq cd-neq-small cd-in" : "cd-neq cd-neq-small cd-neq-wait"}>≠</div>
+                {i > 0 && (
+                  <div
+                    className={[
+                      "cd-neq cd-neq-small",
+                      s.escalate ? "" : "cd-neq-rule",
+                      step >= 3 ? "cd-in" : "cd-neq-wait",
+                    ].join(" ")}
+                  >
+                    {s.escalate ? "≠" : "→"}
+                  </div>
                 )}
                 {step >= 2 ? (
-                  <div className="cd-src cd-in" style={d(i * 0.15)}>
+                  <div
+                    className={src.superseded && step >= 3 ? "cd-src cd-src-old cd-in" : "cd-src cd-in"}
+                    style={d(i * 0.15)}
+                  >
                     <span>{src.ref}</span>
                     <p>{src.text}</p>
                   </div>
@@ -370,11 +383,16 @@ function DemoSlide() {
               </Fragment>
             ))}
           </div>
-          {s.conflict && step >= 4 && (
-            <div className="cd-ticket cd-in">
-              <strong>K1</strong> oprettet på konfliktlisten
-            </div>
-          )}
+          {step >= 4 &&
+            (s.escalate ? (
+              <div className="cd-ticket cd-in">
+                <strong>K1</strong> sendt til fagperson · {s.note}
+              </div>
+            ) : (
+              <div className="cd-ticket cd-ticket-rule cd-in">
+                <strong>✓</strong> {s.note}
+              </div>
+            ))}
         </div>
       </div>
       <p className="cd-fine cd-rise" style={d(0.6)}>
