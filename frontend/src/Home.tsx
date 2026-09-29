@@ -43,9 +43,6 @@ export default function Home() {
               <span className="home-go">Start præsentation →</span>
             </div>
           </a>
-          <a className="home-sub" href="/sydbank_sovs">
-            Øvekort til oplægget →
-          </a>
         </div>
       </div>
     </div>
