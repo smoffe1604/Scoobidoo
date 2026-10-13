@@ -16,3 +16,6 @@ candidate-pack/
 
 # Personal hosting: ssh alias, server paths, nginx and pm2 config.
 deploy/
+
+# Generated from flexiblecurrent/*.graphql by frontend/scripts/build-flexcurrent.mjs.
+frontend/public/flexiblecurrent/
