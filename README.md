@@ -58,6 +58,10 @@ Open http://127.0.0.1:5173/envira. The dev server proxies the API on port 8010.
 
 A live copy runs at https://scoobidoo.bils.hair/envira.
 
+## flexibleCurrent schema viewer
+
+`/flexiblecurrent` draws the Datafordeler flexibleCurrent v3 GraphQL schema (`flexiblecurrent/FLEX_CURRENT_V003.schema.graphql`) as a searchable graph. `npm run build` and `npm run dev` first run `frontend/scripts/build-flexcurrent.mjs`, which parses the schema, folds `XConnection → XEdge → X` into one relation, runs the ELK layout and writes `frontend/public/flexiblecurrent/*.json`. It skips the work when the schema and script are unchanged. To show a new schema version, replace the `.graphql` file and rebuild.
+
 ## Checking the numbers
 
 ```bash
