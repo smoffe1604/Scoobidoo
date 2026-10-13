@@ -75,6 +75,39 @@ function typeLabel(type) {
   return type.name;
 }
 
+const MEANING_KEYS = new Set(["prefLabel (da)", "definition (da)", "comment (da)"]);
+const FREE_TEXT_MAX = 240;
+
+function cleanValue(value) {
+  return value.replace(/<\/?memo>/g, "").replace(/#NOTES#/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// [prefLabel, definition or comment] for the hover tooltip and the field list.
+// Descriptions without a Grunddatamodel block keep their first paragraph as text.
+function meaningOf(description) {
+  const lines = description.split("\n");
+  const start = lines.findIndex((line) => line.startsWith("Grunddatamodel info"));
+  if (start < 0) {
+    const text = cleanValue(description.split(/\n\s*\n/)[0]);
+    if (!text) return null;
+    return ["", text.length > FREE_TEXT_MAX ? `${text.slice(0, FREE_TEXT_MAX - 1).trimEnd()}…` : text];
+  }
+  const found = {};
+  let key = null;
+  for (const line of lines.slice(start + 1)) {
+    const m = /^([A-Za-z][\w ()]*?): ?(.*)$/.exec(line);
+    if (m) {
+      key = MEANING_KEYS.has(m[1]) ? m[1] : null;
+      if (key) found[key] = m[2];
+    } else if (key) {
+      found[key] += ` ${line}`;
+    }
+  }
+  const label = cleanValue(found["prefLabel (da)"] ?? "");
+  const text = cleanValue(found["definition (da)"] ?? "") || cleanValue(found["comment (da)"] ?? "");
+  return label || text ? [label, text] : null;
+}
+
 function isConnection(type) {
   return isObjectType(type) && type.name.endsWith("Connection") && "nodes" in type.getFields();
 }
@@ -114,6 +147,7 @@ async function main() {
 
   const nodes = [];
   const details = { d: {}, f: {}, a: {}, e: {} };
+  const meanings = { t: {}, f: {} };
   for (const [i, t] of graphTypes.entries()) {
     const kind = isInputObjectType(t)
       ? "i"
@@ -154,7 +188,11 @@ async function main() {
       if (inputArgs.length) row.push(inputArgs);
       fields.push(row);
 
-      if (field.description) details.f[`${i}.${j}`] = field.description;
+      if (field.description) {
+        details.f[`${i}.${j}`] = field.description;
+        const meaning = meaningOf(field.description);
+        if (meaning) meanings.f[`${i}.${j}`] = meaning;
+      }
       if ("args" in field && field.args.length) {
         details.a[`${i}.${j}`] = field.args.map((arg) => {
           const at = getNamedType(arg.type);
@@ -165,7 +203,11 @@ async function main() {
         });
       }
     }
-    if (t.description) details.d[i] = t.description;
+    if (t.description) {
+      details.d[i] = t.description;
+      const meaning = meaningOf(t.description);
+      if (meaning) meanings.t[i] = meaning;
+    }
     const node = { n: t.name, k: kind, r: registerOf(t.name), f: fields };
     if (isObjectType(t) && t.getInterfaces().length) node.i = t.getInterfaces().map((x) => index.get(x.name));
     nodes.push(node);
@@ -212,6 +254,7 @@ async function main() {
   });
   for (const variant of VARIANTS.slice(1)) sizes[variant.id] = write(`layout-${variant.id}.json`, layouts[variant.id]);
   sizes.details = write("details.json", details);
+  sizes.meanings = write("meanings.json", meanings);
   console.log(`flexiblecurrent: wrote ${OUT} in ${Date.now() - started} ms`, stats, sizes);
 }
 

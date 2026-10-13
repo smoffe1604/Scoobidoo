@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   EDGE_ARG,
   FLAG_ARGS,
   FLAG_MANY,
   GraphCanvas,
+  SCORE_MEANING,
   SearchIndex,
   buildView,
   kindVisible,
@@ -14,6 +15,8 @@ import {
   type Graph,
   type Hit,
   type Layout,
+  type Meaning,
+  type Meanings,
   type SearchHit,
   type Selection,
   type Variant,
@@ -56,6 +59,10 @@ const KIND_LABEL: Record<GNode["k"], string> = { o: "type", f: "interface", c: "
 export default function FlexibleCurrent() {
   const [graph, setGraph] = useState<Graph | null>(null);
   const [details, setDetails] = useState<Details | null>(null);
+  const [meanings, setMeanings] = useState<Meanings | null>(null);
+  const [tip, setTip] = useState<{ node: number; row: number } | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const tipAt = useRef({ key: "", x: 0, y: 0 });
   const [error, setError] = useState<string | null>(null);
   const [variant, setVariant] = useState<Variant>({ relay: false, inputs: false });
   const [layouts, setLayouts] = useState<Record<string, Layout>>({});
@@ -89,14 +96,20 @@ export default function FlexibleCurrent() {
       .catch((e: Error) => setError(`Kunne ikke hente skemaet (${e.message}).`));
   }, []);
 
-  // Descriptions and arguments are 2 MB raw, so they arrive after the first frame.
+  // Meanings (64 kB gzipped) feed the hover tooltip, so they come first; descriptions
+  // and arguments are 2 MB raw. Both arrive after the first frame.
   useEffect(() => {
     if (!engine) return;
-    const load = () =>
+    const load = () => {
+      fetch(`${BASE}/meanings.json`)
+        .then((r) => r.json() as Promise<Meanings>)
+        .then(setMeanings)
+        .catch(() => setMeanings({ t: {}, f: {} }));
       fetch(`${BASE}/details.json`)
         .then((r) => r.json() as Promise<Details>)
         .then(setDetails)
         .catch(() => undefined);
+    };
     const idle = window.requestIdleCallback ?? ((fn: () => void) => window.setTimeout(fn, 200));
     idle(load);
   }, [engine]);
@@ -110,7 +123,30 @@ export default function FlexibleCurrent() {
       .catch(() => setError("Kunne ikke hente layoutet."));
   }, [graph, variant, layouts]);
 
-  const index = useMemo(() => (graph ? new SearchIndex(graph) : null), [graph]);
+  const index = useMemo(() => {
+    if (!graph) return null;
+    const found = new SearchIndex(graph);
+    if (meanings) found.setMeanings(meanings);
+    return found;
+  }, [graph, meanings]);
+
+  // The tooltip follows the pointer by writing its transform directly; React only
+  // re-renders when the hovered row changes.
+  const onHover = useCallback((hit: Hit, x: number, y: number) => {
+    const target = hit && "node" in hit ? hit : null;
+    const key = target ? `${target.node}.${target.row}` : "";
+    tipAt.current.x = x;
+    tipAt.current.y = y;
+    if (key !== tipAt.current.key) {
+      tipAt.current.key = key;
+      setTip(target);
+    }
+    if (target && tipRef.current) placeTip(tipRef.current, x, y);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (tip && tipRef.current) placeTip(tipRef.current, tipAt.current.x, tipAt.current.y);
+  }, [tip, meanings]);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -176,11 +212,12 @@ export default function FlexibleCurrent() {
     const g = new GraphCanvas(canvasRef.current, graph, {
       onClick: (hit) => onHitRef.current(hit, false),
       onDoubleClick: (hit) => onHitRef.current(hit, true),
+      onHover,
     });
     perf.engine = g.stats;
     setEngine(g);
     return () => g.destroy();
-  }, [graph]);
+  }, [graph, onHover]);
 
   const firstView = useRef(true);
   useEffect(() => {
@@ -310,6 +347,7 @@ export default function FlexibleCurrent() {
             inputRef={searchRef}
             graph={graph}
             index={index}
+            meanings={meanings}
             view={view}
             onPick={(hit) => goTo(hit.field >= 0 ? { node: hit.node, field: hit.field } : { node: hit.node })}
           />
@@ -332,6 +370,7 @@ export default function FlexibleCurrent() {
           <TypeDetails
             graph={graph}
             details={details}
+            meanings={meanings}
             view={view}
             selection={selection}
             canGoBack={history.length > 0}
@@ -347,6 +386,9 @@ export default function FlexibleCurrent() {
       <main className="fc-stage">
         <canvas ref={canvasRef} className="fc-canvas" aria-label="Graf over typer i skemaet" />
         {!view && <div className="fc-loading">Indlæser skema…</div>}
+        <div ref={tipRef} className="fc-tip" role="tooltip" hidden={!tip}>
+          {tip && graph && view && <HoverTip graph={graph} meanings={meanings} relay={view.variant.relay} {...tip} />}
+        </div>
         <div className="fc-zoom">
           <button type="button" onClick={() => engine?.zoomBy(1.4)} aria-label="Zoom ind">
             +
@@ -367,12 +409,14 @@ function Search({
   inputRef,
   graph,
   index,
+  meanings,
   view,
   onPick,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
   graph: Graph;
   index: SearchIndex;
+  meanings: Meanings | null;
   view: View;
   onPick: (hit: SearchHit) => void;
 }) {
@@ -428,7 +472,7 @@ function Search({
         ref={inputRef}
         type="search"
         value={query}
-        placeholder={`Søg type eller felt  ( ${SEARCH_KEY} )`}
+        placeholder={`Søg type, felt eller betydning  ( ${SEARCH_KEY} )`}
         aria-label="Søg i skemaet"
         aria-expanded={open && result.hits.length > 0}
         aria-controls="fc-results"
@@ -447,6 +491,7 @@ function Search({
             {result.hits.map((hit, i) => {
               const node = graph.nodes[hit.node];
               const row = hit.field >= 0 ? node.f[hit.field] : null;
+              const meaning = hit.score >= SCORE_MEANING ? meaningAt(meanings, hit.node, hit.field) : undefined;
               return (
                 <li
                   key={`${hit.node}.${hit.field}`}
@@ -461,18 +506,21 @@ function Search({
                   onMouseEnter={() => setActive(i)}
                 >
                   <span className="fc-dot" style={{ background: graph.registers[node.r][1] }} />
-                  {row ? (
-                    <span className="fc-result-text">
-                      <span className="fc-muted">{node.n}.</span>
-                      <b>{row[0]}</b>
-                      <span className="fc-muted">: {rowLabel(row, view.variant.relay)}</span>
-                    </span>
-                  ) : (
-                    <span className="fc-result-text">
-                      <b>{node.n}</b>
-                      {node.k !== "o" && <span className="fc-kind">{KIND_LABEL[node.k]}</span>}
-                    </span>
-                  )}
+                  <span className="fc-result-body">
+                    {row ? (
+                      <span className="fc-result-text">
+                        <span className="fc-muted">{node.n}.</span>
+                        <b>{row[0]}</b>
+                        <span className="fc-muted">: {rowLabel(row, view.variant.relay)}</span>
+                      </span>
+                    ) : (
+                      <span className="fc-result-text">
+                        <b>{node.n}</b>
+                        {node.k !== "o" && <span className="fc-kind">{KIND_LABEL[node.k]}</span>}
+                      </span>
+                    )}
+                    {meaning && <span className="fc-result-meaning">{meaning[1] || meaning[0]}</span>}
+                  </span>
                 </li>
               );
             })}
@@ -613,6 +661,7 @@ function Help() {
 function TypeDetails({
   graph,
   details,
+  meanings,
   view,
   selection,
   canGoBack,
@@ -622,6 +671,7 @@ function TypeDetails({
 }: {
   graph: Graph;
   details: Details | null;
+  meanings: Meanings | null;
   view: View;
   selection: NonNullable<Selection>;
   canGoBack: boolean;
@@ -634,6 +684,12 @@ function TypeDetails({
   const [register, color] = graph.registers[node.r];
   const description = details?.d[id];
   const listRef = useRef<HTMLOListElement>(null);
+  const picked =
+    selection.field !== undefined
+      ? { node: id, field: selection.field }
+      : selection.via
+        ? { node: selection.via.s, field: selection.via.f }
+        : null;
   const incoming = useMemo(() => {
     const seen = new Set<string>();
     return view.inc[id]
@@ -665,6 +721,16 @@ function TypeDetails({
         <span className="fc-kind">{register}</span>
         <span className="fc-muted">{node.f.length} felter</span>
       </p>
+      {picked && (
+        <FieldCard
+          key={`${picked.node}.${picked.field}`}
+          graph={graph}
+          details={details}
+          meanings={meanings}
+          relay={view.variant.relay}
+          {...picked}
+        />
+      )}
       {selection.via && (
         <p className="fc-via">
           Via{" "}
@@ -693,6 +759,7 @@ function TypeDetails({
             key={f}
             graph={graph}
             details={details}
+            meaning={meaningAt(meanings, id, f)}
             view={view}
             node={id}
             field={f}
@@ -737,9 +804,142 @@ function Description({ text }: { text: string }) {
   );
 }
 
+function meaningAt(meanings: Meanings | null, node: number, field: number): Meaning | undefined {
+  if (!meanings) return undefined;
+  return field >= 0 ? meanings.f[`${node}.${field}`] : meanings.t[node];
+}
+
+function placeTip(el: HTMLElement, x: number, y: number) {
+  const stage = el.parentElement;
+  if (!stage) return;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  let left = x + 16;
+  let top = y + 18;
+  if (left + w > stage.clientWidth - 8) left = Math.max(8, x - w - 12);
+  if (top + h > stage.clientHeight - 8) top = Math.max(8, y - h - 12);
+  el.style.transform = `translate(${left}px, ${top}px)`;
+}
+
+function HoverTip({
+  graph,
+  meanings,
+  relay,
+  node,
+  row,
+}: {
+  graph: Graph;
+  meanings: Meanings | null;
+  relay: boolean;
+  node: number;
+  row: number;
+}) {
+  const type = graph.nodes[node];
+  const field = row >= 0 ? type.f[row] : null;
+  const meaning = meaningAt(meanings, node, row);
+  return (
+    <>
+      {field ? (
+        <p className="fc-tip-name">
+          <span className="fc-muted">{type.n}.</span>
+          <b>{field[0]}</b>
+          <span className="fc-muted">: {rowLabel(field, relay)}</span>
+        </p>
+      ) : (
+        <p className="fc-tip-name">
+          <b>{type.n}</b>
+          <span className="fc-kind">{KIND_LABEL[type.k]}</span>
+        </p>
+      )}
+      {meaning?.[0] && <p className="fc-tip-label">{meaning[0]}</p>}
+      {meaning?.[1] && <p className="fc-tip-text">{meaning[1]}</p>}
+      {!meaning && <p className="fc-tip-text fc-muted">{meanings ? "Ingen beskrivelse" : "Henter beskrivelse…"}</p>}
+    </>
+  );
+}
+
+const MEANING_KEYS = new Set(["prefLabel (da)", "definition (da)", "comment (da)"]);
+const META_ORDER = ["type", "multiplicity", "size", "dbName", "sequenceNumber", "URI", "legalSource", "source"];
+
+/** Key/value lines of a Grunddatamodel block, minus the meaning shown above them. */
+function metaOf(description: string): [string, string][] | null {
+  const lines = description.split("\n");
+  const start = lines.findIndex((line) => line.startsWith("Grunddatamodel info"));
+  if (start < 0) return null;
+  const out: [string, string][] = [];
+  for (const line of lines.slice(start + 1)) {
+    const m = /^([A-Za-z][\w ()]*?): ?(.*)$/.exec(line);
+    if (m && !MEANING_KEYS.has(m[1]) && m[2].trim()) out.push([m[1], cleanText(m[2])]);
+  }
+  const rank = (key: string) => {
+    const at = META_ORDER.indexOf(key);
+    return at < 0 ? META_ORDER.length : at;
+  };
+  return out.sort((a, b) => rank(a[0]) - rank(b[0]));
+}
+
+function FieldCard({
+  graph,
+  details,
+  meanings,
+  relay,
+  node,
+  field,
+}: {
+  graph: Graph;
+  details: Details | null;
+  meanings: Meanings | null;
+  relay: boolean;
+  node: number;
+  field: number;
+}) {
+  const row = graph.nodes[node].f[field];
+  const meaning = meaningAt(meanings, node, field);
+  const description = details?.f[`${node}.${field}`];
+  const meta = description ? metaOf(description) : null;
+  const text = description && !meta ? cleanText(description) : meaning?.[1];
+  return (
+    <div className="fc-field-card">
+      <p className="fc-field-card-name">
+        <span className="fc-muted">{graph.nodes[node].n}.</span>
+        <b>{row[0]}</b>
+        <span className="fc-muted">: {rowLabel(row, relay)}</span>
+      </p>
+      {meaning?.[0] && <p className="fc-field-card-label">{meaning[0]}</p>}
+      {text ? (
+        <p className="fc-field-card-text">{text}</p>
+      ) : (
+        <p className="fc-muted">{meanings ? "Ingen beskrivelse" : "Henter beskrivelse…"}</p>
+      )}
+      {meta && meta.length > 0 && (
+        <details className="fc-field-meta">
+          <summary>Detaljer</summary>
+          <dl>
+            {meta.map(([key, value], k) => (
+              <div key={k}>
+                <dt>{key}</dt>
+                <dd>
+                  {/^https?:\/\//.test(value) ? (
+                    <a href={value} target="_blank" rel="noreferrer">
+                      {value.replace(/^https?:\/\//, "")}
+                    </a>
+                  ) : (
+                    value
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function FieldItem({
   graph,
   details,
+  meaning,
   view,
   node,
   field,
@@ -748,6 +948,7 @@ function FieldItem({
 }: {
   graph: Graph;
   details: Details | null;
+  meaning: Meaning | undefined;
   view: View;
   node: number;
   field: number;
@@ -757,8 +958,8 @@ function FieldItem({
   const row = graph.nodes[node].f[field];
   const [argsOpen, setArgsOpen] = useState(false);
   const target = rowTarget(row, view.variant.relay);
-  const description = details?.f[`${node}.${field}`];
   const args = details?.a[`${node}.${field}`];
+  const summary = meaning ? meaning[1] || meaning[0] : "";
   return (
     <li data-f={field} className={marked ? "is-marked" : undefined}>
       <div className="fc-field-line">
@@ -785,7 +986,11 @@ function FieldItem({
           </span>
         )}
       </div>
-      {description && <p className="fc-field-desc">{cleanText(description)}</p>}
+      {summary && (
+        <p className="fc-field-desc" title={summary}>
+          {summary}
+        </p>
+      )}
       {argsOpen && (
         <ul className="fc-args">
           {!args && <li className="fc-muted">Henter argumenter…</li>}

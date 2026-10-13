@@ -28,6 +28,9 @@ export type Details = {
   a: Record<string, ArgRow[]>;
   e: Record<string, string[]>;
 };
+/** prefLabel (da) and definition/comment, either may be "". Types keyed by index, fields by "type.field". */
+export type Meaning = [label: string, text: string];
+export type Meanings = { t: Record<string, Meaning>; f: Record<string, Meaning> };
 export type Variant = { relay: boolean; inputs: boolean };
 /** `field` marks one row of the selected type; `via` is the relation that led here. */
 export type Selection = { node: number; field?: number; via?: { s: number; f: number } } | null;
@@ -256,6 +259,8 @@ export type Hit = { node: number; row: number } | { edge: number } | null;
 export type GraphEvents = {
   onClick(hit: Hit): void;
   onDoubleClick(hit: Hit): void;
+  /** Every pointer move over the canvas, with canvas-local coordinates; null while dragging or away. */
+  onHover?(hit: Hit, x: number, y: number): void;
 };
 
 type Camera = { s: number; tx: number; ty: number };
@@ -330,6 +335,7 @@ export class GraphCanvas {
       this.edgePoly.push(poly);
     }
     this.hover = null;
+    this.events.onHover?.(null, 0, 0);
     this.redraw();
   }
 
@@ -503,6 +509,7 @@ export class GraphCanvas {
       "wheel",
       (e) => {
         e.preventDefault();
+        this.events.onHover?.(null, 0, 0);
         const p = local(e);
         const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.height : 1;
         const dx = e.deltaX * unit;
@@ -521,6 +528,7 @@ export class GraphCanvas {
     );
 
     on("pointerdown", (e) => {
+      this.events.onHover?.(null, 0, 0);
       c.setPointerCapture(e.pointerId);
       const p = local(e);
       this.pointers.set(e.pointerId, p);
@@ -540,6 +548,7 @@ export class GraphCanvas {
           c.style.cursor = hit ? "pointer" : "grab";
           this.redraw();
         }
+        this.events.onHover?.(hit, p.x, p.y);
         return;
       }
       this.pointers.set(e.pointerId, p);
@@ -579,6 +588,7 @@ export class GraphCanvas {
     on("pointerup", release);
     on("pointercancel", release);
     on("pointerleave", () => {
+      this.events.onHover?.(null, 0, 0);
       if (this.hover && !this.drag) {
         this.hover = null;
         this.redraw();
@@ -861,9 +871,14 @@ function sameHit(a: Hit, b: Hit): boolean {
 
 export type SearchHit = { node: number; field: number; score: number };
 
+/** Score at and above which a hit matched the Danish meaning, not the name. */
+export const SCORE_MEANING = 16;
+const MEANING_MIN_QUERY = 3;
+
 /** Flat lowercase index over type and field names; one pass per keystroke. */
 export class SearchIndex {
   private labels: string[] = [];
+  private texts: string[] | null = null;
   private nodes: Int32Array;
   private fields: Int32Array;
 
@@ -884,6 +899,14 @@ export class SearchIndex {
     this.fields = Int32Array.from(fields);
   }
 
+  /** Lets queries of three or more letters also match prefLabel and definition text. */
+  setMeanings(meanings: Meanings) {
+    this.texts = this.labels.map((_, k) => {
+      const m = this.fields[k] < 0 ? meanings.t[this.nodes[k]] : meanings.f[`${this.nodes[k]}.${this.fields[k]}`];
+      return m ? `${m[0]} ${m[1]}`.toLowerCase() : "";
+    });
+  }
+
   /** Types rank above fields; `demote` pushes e.g. hidden input types to the end. */
   search(query: string, demote: (node: number) => boolean, limit = 60): { hits: SearchHit[]; total: number } {
     let q = query.trim().toLowerCase();
@@ -894,9 +917,11 @@ export class SearchIndex {
       owner = q.slice(0, dot);
       q = q.slice(dot + 1);
     }
-    // Exact > prefix > word start (after "_") > substring, within types then fields.
-    const buckets: SearchHit[][] = Array.from({ length: 16 }, () => []);
+    // Exact > prefix > word start (after "_") > substring, within types then fields;
+    // meaning-text matches rank after every name match.
+    const buckets: SearchHit[][] = Array.from({ length: SCORE_MEANING + 4 }, () => []);
     const labels = this.labels;
+    const texts = !owner && q.length >= MEANING_MIN_QUERY ? this.texts : null;
     let total = 0;
     let ownerOk = false;
     for (let k = 0; k < labels.length; k++) {
@@ -907,7 +932,13 @@ export class SearchIndex {
       }
       const label = labels[k];
       const at = q ? label.indexOf(q) : 0;
-      if (at < 0) continue;
+      if (at < 0) {
+        if (!texts || !texts[k].includes(q)) continue;
+        const score = SCORE_MEANING + (demote(this.nodes[k]) ? 2 : 0) + (isType ? 0 : 1);
+        total++;
+        if (buckets[score].length < limit) buckets[score].push({ node: this.nodes[k], field: this.fields[k], score });
+        continue;
+      }
       const rank = !q ? 1 : label.length === q.length ? 0 : at === 0 ? 1 : label[at - 1] === "_" ? 2 : 3;
       const score = (demote(this.nodes[k]) ? 8 : 0) + (isType ? 0 : 4) + rank;
       total++;
