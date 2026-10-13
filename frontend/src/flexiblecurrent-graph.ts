@@ -716,9 +716,7 @@ export class GraphCanvas {
     ctx.globalAlpha = 1;
 
     if (hoverEdge >= 0) {
-      ctx.strokeStyle = "#141413";
-      ctx.lineWidth = 2.5 / s;
-      this.strokeEdge(hoverEdge);
+      this.strokeEdge(hoverEdge, "#141413", 2.5);
     }
 
     const ms = performance.now() - t0;
@@ -731,13 +729,20 @@ export class GraphCanvas {
     }
   }
 
-  private strokeEdge(e: number) {
+  private strokeEdge(e: number, color: string, width: number) {
     const g = this.view!.geo;
     const o = e * 8;
-    this.ctx.beginPath();
-    this.ctx.moveTo(g[o], g[o + 1]);
-    this.ctx.bezierCurveTo(g[o + 2], g[o + 3], g[o + 4], g[o + 5], g[o + 6], g[o + 7]);
-    this.ctx.stroke();
+    const ctx = this.ctx;
+    const dpr = this.dpr;
+    const k = dpr * this.cam.s, ox = dpr * this.cam.tx, oy = dpr * this.cam.ty;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width * dpr;
+    ctx.beginPath();
+    ctx.moveTo(g[o] * k + ox, g[o + 1] * k + oy);
+    ctx.bezierCurveTo(g[o + 2] * k + ox, g[o + 3] * k + oy, g[o + 4] * k + ox, g[o + 5] * k + oy, g[o + 6] * k + ox, g[o + 7] * k + oy);
+    ctx.stroke();
+    ctx.setTransform(k, 0, 0, k, ox, oy);
   }
 
   private drawEdges(vx0: number, vy0: number, vx1: number, vy1: number, s: number) {
@@ -746,48 +751,53 @@ export class GraphCanvas {
     const g = view.geo;
     const hi = this.edgeHi;
     const arrows = s > 0.18;
+    const dpr = this.dpr;
+    const k = dpr * s, ox = dpr * this.cam.tx, oy = dpr * this.cam.ty;
+    // Edges are stroked in device pixels: 1px strokes then hit Skia's hairline
+    // path, which in software rendering is ~25x faster than scaled world strokes.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     // Batched by style: [edge kind, highlighted?] -> one path and one stroke each.
     // The root fans out to every entity, so its edges stay faint until selected.
     const styles: [number, number, string, number, number][] = hi
       ? [
-          [EDGE_FIELD, 0, "#a8a29e", 0.1, 1],
-          [EDGE_ARG, 0, "#2563eb", 0.08, 1],
+          [EDGE_FIELD, 0, "#a8a29e", 0.1, 0],
+          [EDGE_ARG, 0, "#2563eb", 0.08, 0],
           [EDGE_FIELD, 1, "#d97757", 1, 2.4],
           [EDGE_ARG, 1, "#2563eb", 1, 2],
         ]
       : [
-          [EDGE_ROOT, 0, "#8a857a", 0.12, 1],
-          [EDGE_FIELD, 0, "#8a857a", 0.5, 1],
-          [EDGE_ARG, 0, "#2563eb", 0.35, 1],
+          [EDGE_ROOT, 0, "#8a857a", 0.12, 0],
+          [EDGE_FIELD, 0, "#8a857a", 0.5, 0],
+          [EDGE_ARG, 0, "#2563eb", 0.35, 0],
         ];
     for (const [kind, isHi, color, alpha, width] of styles) {
       const isArg = kind === EDGE_ARG;
       ctx.beginPath();
       const heads: number[] = [];
       for (let e = 0; e < view.edgeCount; e++) {
-        const k = hi && view.edgeKind[e] === EDGE_ROOT ? EDGE_FIELD : view.edgeKind[e];
-        if (k !== kind) continue;
+        const ek = hi && view.edgeKind[e] === EDGE_ROOT ? EDGE_FIELD : view.edgeKind[e];
+        if (ek !== kind) continue;
         if (hi && hi[e] !== isHi) continue;
         const b = e * 4;
         if (view.box[b] > vx1 || view.box[b + 1] > vy1 || view.box[b + 2] < vx0 || view.box[b + 3] < vy0) continue;
         const o = e * 8;
-        ctx.moveTo(g[o], g[o + 1]);
-        ctx.bezierCurveTo(g[o + 2], g[o + 3], g[o + 4], g[o + 5], g[o + 6], g[o + 7]);
+        ctx.moveTo(g[o] * k + ox, g[o + 1] * k + oy);
+        ctx.bezierCurveTo(g[o + 2] * k + ox, g[o + 3] * k + oy, g[o + 4] * k + ox, g[o + 5] * k + oy, g[o + 6] * k + ox, g[o + 7] * k + oy);
         if ((arrows && kind !== EDGE_ROOT) || isHi) heads.push(o);
       }
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = color;
-      ctx.lineWidth = width / s;
-      if (isArg) ctx.setLineDash([6 / s, 4 / s]);
+      ctx.lineWidth = width ? width * dpr : 1;
+      if (isArg) ctx.setLineDash([6 * dpr, 4 * dpr]);
       ctx.stroke();
       ctx.setLineDash([]);
       if (heads.length) {
-        const size = Math.min(10, 7 / s);
+        const size = Math.min(10 * s, 7) * dpr;
         ctx.fillStyle = color;
         ctx.beginPath();
         for (const o of heads) {
-          const hx = g[o + 6], hy = g[o + 7];
-          const dir = g[o + 4] > hx ? -1 : 1;
+          const hx = g[o + 6] * k + ox, hy = g[o + 7] * k + oy;
+          const dir = g[o + 4] > g[o + 6] ? -1 : 1;
           ctx.moveTo(hx, hy);
           ctx.lineTo(hx - dir * size, hy - size * 0.55);
           ctx.lineTo(hx - dir * size, hy + size * 0.55);
@@ -797,7 +807,9 @@ export class GraphCanvas {
       }
     }
     ctx.globalAlpha = 1;
+    ctx.setTransform(k, 0, 0, k, ox, oy);
   }
+
 
   private drawRows(i: number, vy0: number, vy1: number, hoverRow: number) {
     const view = this.view!;
