@@ -49,6 +49,8 @@ function cleanText(text: string) {
   return text.replace(/#NOTES#/g, "\n").replace(/<\/?memo>/g, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+const SEARCH_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
+
 const KIND_LABEL: Record<GNode["k"], string> = { o: "type", f: "interface", c: "connection", e: "edge", i: "input" };
 
 export default function FlexibleCurrent() {
@@ -230,7 +232,7 @@ export default function FlexibleCurrent() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.closest?.("input, select, textarea");
-      if (e.key === "/" && !typing) {
+      if (((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") || (e.key === "/" && !typing)) {
         e.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
@@ -426,7 +428,7 @@ function Search({
         ref={inputRef}
         type="search"
         value={query}
-        placeholder="Søg type eller felt  ( / )"
+        placeholder={`Søg type eller felt  ( ${SEARCH_KEY} )`}
         aria-label="Søg i skemaet"
         aria-expanded={open && result.hits.length > 0}
         aria-controls="fc-results"
@@ -595,7 +597,7 @@ function Help() {
       <p>Klik en type for at se dens felter og relationer. Klik et felt eller en kant for at følge relationen.</p>
       <ul>
         <li>
-          <kbd>/</kbd> søg · <kbd>Esc</kbd> ryd valg · <kbd>⌫</kbd> tilbage
+          <kbd>{SEARCH_KEY}</kbd> eller <kbd>/</kbd> søg · <kbd>Esc</kbd> ryd valg · <kbd>⌫</kbd> tilbage
         </li>
         <li>
           Træk for at panorere · hjul eller knib for at zoome · dobbeltklik for at fokusere
