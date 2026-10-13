@@ -103,6 +103,14 @@
 
 .home-coral { color: var(--coral); }
 
+.home-art-schema {
+  display: block;
+  width: 100%;
+  background: #f5f3ec;
+}
+
+.home-art-schema path { fill: none; stroke: #8a857a; stroke-width: 1.5; }
+
 .home-body { padding: 22px 26px 24px; }
 .home-body p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
 .home-body .home-kicker { margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
