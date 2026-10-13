@@ -33,7 +33,7 @@ def default_data_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "data"
 
 
-def create_app(data_dir: Path | None = None) -> FastAPI:
+def create_app(data_dir: Path | None = None, dist_dir: Path | None = None) -> FastAPI:
     source = Path(data_dir) if data_dir is not None else default_data_dir()
 
     @asynccontextmanager
@@ -209,7 +209,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Ukendt tabel '{name}'.")
         return found
 
-    dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    dist = Path(dist_dir) if dist_dir is not None else Path(__file__).resolve().parents[1] / "frontend" / "dist"
     assets = dist / "assets"
     if assets.is_dir():
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
@@ -220,6 +220,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         @app.get("/envira/opgavebeskrivelser")
         @app.get("/sydbank")
         @app.get("/sydbank_sovs")
+        @app.get("/flexiblecurrent")
         def index() -> FileResponse:
             return FileResponse(dist / "index.html")
 
@@ -233,7 +234,28 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             if outline.is_file():
                 _mount_outline(app, name, outline)
 
+        graph = dist / "flexiblecurrent"
+        if graph.is_dir():
+            _mount_schema_graph(app, graph)
+
     return app
+
+
+def _mount_schema_graph(app: FastAPI, folder: Path) -> None:
+    # Only the files the build wrote are served, gzipped when the client allows.
+    files = {path.name: path for path in folder.glob("*.json")}
+
+    @app.get("/flexiblecurrent/{name}")
+    def schema_graph(name: str, request: Request) -> FileResponse:
+        path = files.get(name)
+        if path is None:
+            raise HTTPException(status_code=404, detail="Ukendt fil.")
+        headers = {"Cache-Control": "public, max-age=300", "Vary": "Accept-Encoding"}
+        packed = path.with_name(f"{name}.gz")
+        if "gzip" in request.headers.get("accept-encoding", "") and packed.is_file():
+            headers["Content-Encoding"] = "gzip"
+            return FileResponse(packed, media_type="application/json", headers=headers)
+        return FileResponse(path, media_type="application/json", headers=headers)
 
 
 def _mount_outline(app: FastAPI, name: str, outline: Path) -> None:
